@@ -32,6 +32,7 @@ import {
   Clock,
 } from 'lucide-react'
 import { toast } from 'sonner'
+import { sendTelegramNotification } from '@/lib/telegram'
 
 interface ClientOption {
   id: string
@@ -178,8 +179,18 @@ export default function InvoicesView() {
       if (res.ok) {
         toast.success('Invoice created successfully')
         setDialogOpen(false)
-        setForm(emptyForm)
         fetchInvoices()
+        // Send Telegram notification for new invoice
+        const clientName = clients.find(c => c.id === form.clientId)?.name || 'N/A'
+        sendTelegramNotification({
+          type: 'invoice_created',
+          data: {
+            clientName,
+            invoiceNo: 'Pending',
+            amount: parseFloat(form.amount) || 0,
+          },
+        })
+        setForm(emptyForm)
       } else {
         toast.error('Failed to create invoice')
       }
@@ -203,6 +214,10 @@ export default function InvoicesView() {
       if (res.ok) {
         toast.success(`Invoice ${invoice.invoiceNo} marked as paid`)
         setInvoices((prev) => prev.map((i) => (i.id === invoice.id ? { ...i, status: 'Paid' } : i)))
+        sendTelegramNotification({
+          type: 'invoice_paid',
+          data: { clientName: invoice.clientName, invoiceNo: invoice.invoiceNo, amount: invoice.amount },
+        })
       } else {
         toast.error('Failed to update invoice')
       }

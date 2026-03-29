@@ -3,6 +3,7 @@
 import React, { useState, useEffect, useCallback } from 'react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
+import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
 import {
   DollarSign,
@@ -14,7 +15,9 @@ import {
   AlertTriangle,
   ArrowUpRight,
   MapPin,
+  Send,
 } from 'lucide-react'
+import { sendTelegramNotification } from '@/lib/telegram'
 
 interface DashboardStats {
   totalRevenue: number
@@ -84,6 +87,7 @@ export default function DashboardView() {
   const [overdueInvoices, setOverdueInvoices] = useState<Invoice[]>([])
   const [monthlyRevenue, setMonthlyRevenue] = useState<MonthlyRevenue[]>([])
   const [loading, setLoading] = useState(true)
+  const [sendingSummary, setSendingSummary] = useState(false)
 
   const fetchData = useCallback(async () => {
     try {
@@ -155,6 +159,28 @@ export default function DashboardView() {
   useEffect(() => {
     fetchData()
   }, [fetchData])
+
+  const handleSendWeeklySummary = async () => {
+    setSendingSummary(true)
+    try {
+      const statsRes = await fetch('/api/reports')
+      if (statsRes.ok) {
+        const data = await statsRes.json()
+        await sendTelegramNotification({
+          type: 'weekly_summary',
+          data: {
+            weeklyData: {
+              totalRevenue: data.totalRevenue || 0,
+              totalExpenses: data.totalExpenses || 0,
+              signingsCompleted: data.completedSignings || 0,
+              totalMileage: data.totalMileage || 0,
+            },
+          },
+        })
+      }
+    } catch {}
+    setSendingSummary(false)
+  }
 
   if (loading) {
     return (
@@ -228,9 +254,21 @@ export default function DashboardView() {
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div>
-        <h1 className="text-2xl font-bold text-slate-900">Dashboard</h1>
-        <p className="text-sm text-slate-500 mt-0.5">Welcome back! Here&apos;s your business overview.</p>
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+        <div>
+          <h1 className="text-2xl font-bold text-slate-900">Dashboard</h1>
+          <p className="text-sm text-slate-500 mt-0.5">Welcome back! Here&apos;s your business overview.</p>
+        </div>
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={handleSendWeeklySummary}
+          disabled={sendingSummary}
+          className="gap-2 border-blue-200 text-blue-700 hover:bg-blue-50 shrink-0"
+        >
+          <Send className="h-3.5 w-3.5" />
+          {sendingSummary ? 'Sending...' : 'Weekly Summary'}
+        </Button>
       </div>
 
       {/* Stats Cards */}

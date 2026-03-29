@@ -41,6 +41,7 @@ import {
   TrendingDown,
 } from 'lucide-react'
 import { toast } from 'sonner'
+import { sendTelegramNotification } from '@/lib/telegram'
 
 interface Expense {
   id: string
@@ -195,6 +196,18 @@ export default function ExpensesView() {
         toast.success(editingExpense ? 'Expense updated' : 'Expense added')
         setDialogOpen(false)
         fetchExpenses()
+        // Send Telegram notification for new expense
+        if (!editingExpense) {
+          sendTelegramNotification({
+            type: 'expense_added',
+            data: {
+              description: form.description,
+              category: form.category,
+              amount: parseFloat(form.amount) || 0,
+              date: form.date,
+            },
+          })
+        }
       } else {
         toast.error('Failed to save expense')
       }

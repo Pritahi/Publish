@@ -38,6 +38,7 @@ import {
   ChevronRight,
 } from 'lucide-react'
 import { toast } from 'sonner'
+import { sendTelegramNotification } from '@/lib/telegram'
 
 interface ClientOption {
   id: string
@@ -238,6 +239,45 @@ export default function SigningsView() {
         toast.success(editingSigning ? 'Signing updated' : 'Signing created')
         setDialogOpen(false)
         fetchSignings()
+        const clientName = clients.find(c => c.id === form.clientId)?.name || 'N/A'
+        if (!editingSigning) {
+          // New signing notification
+          sendTelegramNotification({
+            type: 'new_signing',
+            data: {
+              clientName,
+              serviceType: form.serviceType,
+              date: form.date,
+              time: form.time,
+              location: form.location,
+              fee: parseFloat(form.fee) || 0,
+            },
+          })
+        } else if (editingSigning) {
+          // Status change notifications
+          const oldStatus = editingSigning.status
+          const newStatus = form.status
+          if (oldStatus !== 'Completed' && newStatus === 'Completed') {
+            sendTelegramNotification({
+              type: 'signing_completed',
+              data: {
+                clientName,
+                serviceType: form.serviceType,
+                date: form.date,
+                fee: parseFloat(form.fee) || 0,
+              },
+            })
+          } else if (oldStatus !== 'Cancelled' && newStatus === 'Cancelled') {
+            sendTelegramNotification({
+              type: 'signing_cancelled',
+              data: {
+                clientName,
+                serviceType: form.serviceType,
+                date: form.date,
+              },
+            })
+          }
+        }
       } else {
         toast.error('Failed to save signing')
       }

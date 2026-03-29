@@ -13,6 +13,7 @@ import {
   Menu,
   BookOpen,
   Settings as SettingsIcon,
+  Bell,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from '@/components/ui/sheet'
@@ -36,6 +37,46 @@ const navItems = [
   { id: 'reports', label: 'Reports', icon: BarChart3 },
   { id: 'settings', label: 'Settings', icon: SettingsIcon },
 ]
+
+function NotificationBell({ onClick }: { onClick: () => void }) {
+  const [count, setCount] = useState(0)
+  const [enabled, setEnabled] = useState(false)
+
+  React.useEffect(() => {
+    const check = () => {
+      try {
+        const tg = JSON.parse(localStorage.getItem('notarypro-telegram') || '{}')
+        setEnabled(!!tg.enabled && !!tg.chatId)
+        const logs = JSON.parse(localStorage.getItem('notarypro-notification-log') || '[]')
+        const recent = logs.filter((l: any) => {
+          const sentAt = new Date(l.sentAt)
+          const hourAgo = new Date(Date.now() - 60 * 60 * 1000)
+          return sentAt > hourAgo && l.success
+        })
+        setCount(recent.length)
+      } catch {}
+    }
+    check()
+    const interval = setInterval(check, 30000)
+    return () => clearInterval(interval)
+  }, [])
+
+  if (!enabled) return null
+
+  return (
+    <button
+      onClick={onClick}
+      className="relative p-2 rounded-lg text-slate-300 hover:bg-slate-800 hover:text-white transition-colors"
+    >
+      <Bell className="h-5 w-5" />
+      {count > 0 && (
+        <span className="absolute -top-0.5 -right-0.5 h-4 w-4 rounded-full bg-emerald-500 text-white text-[9px] font-bold flex items-center justify-center">
+          {count > 9 ? '9+' : count}
+        </span>
+      )}
+    </button>
+  )
+}
 
 function SidebarNav({
   activePage,
@@ -100,7 +141,10 @@ export function AppLayout({ activePage, setActivePage, children }: AppLayoutProp
 
           {/* Bottom */}
           <div className="px-5 py-4 border-t border-slate-800">
-            <p className="text-xs text-slate-500 text-center">Powered by NotaryPro</p>
+            <div className="flex items-center justify-between">
+              <NotificationBell onClick={() => setActivePage('settings')} />
+              <p className="text-xs text-slate-500">NotaryPro</p>
+            </div>
           </div>
         </aside>
 
@@ -140,7 +184,10 @@ export function AppLayout({ activePage, setActivePage, children }: AppLayoutProp
                   />
                 </ScrollArea>
                 <div className="px-5 py-4 border-t border-slate-800">
-                  <p className="text-xs text-slate-500 text-center">Powered by NotaryPro</p>
+                  <div className="flex items-center justify-between">
+                    <NotificationBell onClick={() => { setActivePage('settings'); setMobileOpen(false) }} />
+                    <p className="text-xs text-slate-500">NotaryPro</p>
+                  </div>
                 </div>
               </SheetContent>
             </Sheet>
