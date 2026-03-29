@@ -17,7 +17,7 @@ function getPeriodRange(period: string) {
       const end = new Date(year, 11, 31, 23, 59, 59, 999)
       return { start, end }
     }
-    case 'all': {
+    case 'allTime': {
       return { start: new Date(2000, 0, 1), end: new Date(2099, 11, 31, 23, 59, 59, 999) }
     }
     case 'thisMonth':
@@ -40,17 +40,17 @@ export async function GET(request: NextRequest) {
     const [
       totalClients,
       totalSignings,
-      paidInvoices,
-      unpaidInvoices,
-      overdueInvoices,
+      totalRevenue,
+      pendingPayments,
+      overduePayments,
       periodExpenses,
       periodMileage,
       monthlyRevenue,
-      signingsByStatus,
       expensesByCategory,
       topClients,
       recentSignings,
       upcomingSignings,
+      signingsByType,
     ] = await Promise.all([
       // Total clients
       db.client.count(),
@@ -58,7 +58,7 @@ export async function GET(request: NextRequest) {
       // Total signings
       db.signing.count(),
 
-      // Total revenue (sum of paid invoices)
+      // Total revenue (sum of paid invoices) — all time
       db.invoice.aggregate({
         where: { status: 'Paid' },
         _sum: { amount: true },
@@ -70,7 +70,7 @@ export async function GET(request: NextRequest) {
         _sum: { amount: true },
       }),
 
-      // Overdue payments (dueDate < now && status != "Paid")
+      // Overdue payments
       db.invoice.aggregate({
         where: {
           dueDate: { lt: now },
@@ -79,13 +79,13 @@ export async function GET(request: NextRequest) {
         _sum: { amount: true },
       }),
 
-      // Total expenses for the period
+      // Total expenses for the selected period
       db.expense.aggregate({
         where: { date: { gte: start, lte: end } },
         _sum: { amount: true },
       }),
 
-      // Total mileage for the period
+      // Total mileage for the selected period
       db.signing.aggregate({
         where: {
           date: { gte: start, lte: end },
@@ -94,7 +94,7 @@ export async function GET(request: NextRequest) {
         _sum: { mileage: true },
       }),
 
-      // Monthly revenue (last 6 months)
+      // Monthly revenue (last 6 months) — uses paid invoices with paidDate
       (() => {
         const months: { month: string; revenue: number }[] = []
         const promises = []
@@ -102,7 +102,7 @@ export async function GET(request: NextRequest) {
           const d = new Date(now.getFullYear(), now.getMonth() - i, 1)
           const mStart = new Date(d.getFullYear(), d.getMonth(), 1, 0, 0, 0, 0)
           const mEnd = new Date(d.getFullYear(), d.getMonth() + 1, 0, 23, 59, 59, 999)
-          const label = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
+          const label = d.toLocaleDateString('en-US', { month: 'short' })
 
           promises.push(
             db.invoice
@@ -124,20 +124,14 @@ export async function GET(request: NextRequest) {
         return Promise.all(promises).then(() => months)
       })(),
 
-      // Signings by status
-      db.signing.groupBy({
-        by: ['status'],
-        _count: { status: true },
-      }),
-
-      // Expenses by category (for the period)
+      // Expenses by category (for the selected period)
       db.expense.groupBy({
         by: ['category'],
         where: { date: { gte: start, lte: end } },
         _sum: { amount: true },
       }),
 
-      // Top 5 clients by revenue (using Prisma queries instead of raw SQL)
+      // Top 5 clients by revenue
       db.client.findMany({
         take: 5,
         include: {
@@ -152,7 +146,7 @@ export async function GET(request: NextRequest) {
         clients.map(c => ({
           name: c.name,
           totalRevenue: c.invoices.reduce((sum, i) => sum + i.amount, 0),
-          signingsCount: c._count.signings,
+          signingCount: c._count.signings,
         })).sort((a, b) => b.totalRevenue - a.totalRevenue)
       ),
 
@@ -174,26 +168,48 @@ export async function GET(request: NextRequest) {
           client: { select: { id: true, name: true } },
         },
       }),
+
+      // Signings by service type (for the selected period)
+      db.signing.groupBy({
+        by: ['serviceType'],
+        where: { date: { gte: start, lte: end } },
+        _count: { serviceType: true },
+      }),
     ])
 
+    // Calculate derived values
+    const totalIncome = totalRevenue._sum.amount ?? 0
+    const totalExp = periodExpenses._sum.amount ?? 0
+    const mileage = periodMileage._sum.mileage ?? 0
+    const completedSignings = totalSignings
+
     return NextResponse.json({
+      // Dashboard fields
       totalClients,
       totalSignings,
-      totalRevenue: paidInvoices._sum.amount ?? 0,
-      pendingPayments: unpaidInvoices._sum.amount ?? 0,
-      overduePayments: overdueInvoices._sum.amount ?? 0,
-      totalExpenses: periodExpenses._sum.amount ?? 0,
-      totalMileage: periodMileage._sum.mileage ?? 0,
+      totalRevenue: totalIncome,
+      pendingPayments: pendingPayments._sum.amount ?? 0,
+      overduePayments: overduePayments._sum.amount ?? 0,
+      totalExpenses: totalExp,
+      totalMileage: mileage,
+
+      // Reports page fields (matching frontend interface)
+      totalIncome,
+      netProfit: totalIncome - totalExp,
+      mileageDeduction: mileage * 0.67,
+      completedSignings,
+
       monthlyRevenue,
-      signingsByStatus: signingsByStatus.map((s) => ({
-        status: s.status,
-        count: s._count.status,
-      })),
-      expensesByCategory: expensesByCategory.map((e) => ({
+      expenseCategories: expensesByCategory.map(e => ({
         category: e.category,
         amount: e._sum.amount ?? 0,
       })),
+      signingsByType: signingsByType.map(s => ({
+        type: s.serviceType,
+        count: s._count.serviceType,
+      })),
       topClients,
+
       recentSignings,
       upcomingSignings,
     })
