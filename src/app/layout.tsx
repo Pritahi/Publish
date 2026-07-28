@@ -19,7 +19,7 @@ export const metadata: Metadata = {
   keywords: ["NotaryPro", "notary", "mobile notary", "business management", "signings", "invoices"],
   authors: [{ name: "NotaryPro" }],
   icons: {
-    icon: "https://z-cdn.chatglm.cn/z-ai/static/logo.svg",
+    icon: "/logo.svg",
   },
   openGraph: {
     title: "NotaryPro",

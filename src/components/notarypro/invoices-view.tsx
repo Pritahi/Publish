@@ -1,3 +1,8 @@
+/**
+ * InvoicesView — Invoice management interface with create, edit,
+ * mark-as-paid, and PDF generation capabilities.
+ * Fetches data from /api/invoices.
+ */
 'use client'
 
 import React, { useState, useEffect, useCallback } from 'react'

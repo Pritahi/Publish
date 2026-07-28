@@ -1,3 +1,8 @@
+/**
+ * EJournalView — Digital notary journal with signature capture,
+ * document logging, and entry management.
+ * Combines signing data with local journal entries.
+ */
 'use client'
 
 import React, { useState, useRef, useEffect, useCallback } from 'react'

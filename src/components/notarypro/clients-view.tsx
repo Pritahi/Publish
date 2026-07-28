@@ -1,3 +1,8 @@
+/**
+ * ClientsView — Client management CRUD interface.
+ * Lists clients with search, add/edit/delete modals, and revenue tracking.
+ * Fetches data from /api/clients.
+ */
 'use client'
 
 import React, { useState, useEffect, useCallback } from 'react'

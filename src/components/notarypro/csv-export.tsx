@@ -1,3 +1,7 @@
+/**
+ * CSV Export utility component.
+ * Provides a button to export tabular data as a downloadable CSV file.
+ */
 'use client'
 
 import { Button } from '@/components/ui/button'

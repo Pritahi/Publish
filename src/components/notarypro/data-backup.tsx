@@ -1,3 +1,7 @@
+/**
+ * DataBackup — Backup and restore utility component.
+ * Exports all data as JSON and supports importing from backup files.
+ */
 'use client'
 
 import React, { useRef } from 'react'

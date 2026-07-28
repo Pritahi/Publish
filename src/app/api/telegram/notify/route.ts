@@ -1,18 +1,18 @@
 import { NextRequest, NextResponse } from 'next/server'
 
-// HAM's Telegram Bot Token — TODO: move to .env as TELEGRAM_BOT_TOKEN
-const BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN || '6180590444:AAGjRCe_5O6iVfY2XLQAgl7dmc2lVspz2Fk'
+// Telegram Bot Token — must be set via TELEGRAM_BOT_TOKEN env variable
+const BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN || ''
 
 // POST /api/telegram/notify
 // This API sends a Telegram message.
-// Uses HAM's bot by default, fallback to client-provided botToken
+// Uses server bot token by default, fallback to client-provided botToken
 // Body: { chatId: string, message: string, botToken?: string, parseMode?: 'HTML' | 'Markdown' }
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json()
     const { chatId, message, botToken: clientBotToken, parseMode = 'HTML' } = body
 
-    // Use HAM's bot by default, fallback to client-provided token
+    // Use server bot token by default, fallback to client-provided token
     const botToken = clientBotToken || BOT_TOKEN
 
     if (!botToken) {

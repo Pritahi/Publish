@@ -1,3 +1,8 @@
+/**
+ * Invoice PDF generator component.
+ * Uses @react-pdf/renderer to create professional PDF invoices
+ * that can be downloaded or printed.
+ */
 'use client'
 
 import React from 'react'

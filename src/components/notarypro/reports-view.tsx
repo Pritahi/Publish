@@ -1,3 +1,8 @@
+/**
+ * ReportsView — Analytics and reporting dashboard with revenue charts,
+ * expense breakdowns, top clients, and signing type distribution.
+ * Fetches data from /api/reports.
+ */
 'use client'
 
 import React, { useState, useEffect, useCallback } from 'react'

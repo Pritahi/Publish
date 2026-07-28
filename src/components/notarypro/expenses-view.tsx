@@ -1,3 +1,8 @@
+/**
+ * ExpensesView — Expense tracking interface with category filtering,
+ * add/edit/delete modals, and monthly summaries.
+ * Fetches data from /api/expenses.
+ */
 'use client'
 
 import React, { useState, useEffect, useCallback } from 'react'

@@ -1,6 +1,14 @@
 import { NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 
+/**
+ * ⚠️ WARNING: Seed Endpoint
+ *
+ * This endpoint DELETES ALL existing data and replaces it with demo data.
+ * - DO NOT expose this endpoint in production without authentication.
+ * - Consider disabling or removing this route before deploying to production.
+ * - For initial setup only — use once, then remove or protect with auth.
+ */
 export async function POST() {
   try {
     // Clean seed - delete everything first

@@ -97,7 +97,7 @@ export async function GET(request: NextRequest) {
       // Monthly revenue (last 6 months) — uses paid invoices with paidDate
       (() => {
         const months: { month: string; revenue: number }[] = []
-        const promises = []
+        const promises: Promise<void>[] = []
         for (let i = 5; i >= 0; i--) {
           const d = new Date(now.getFullYear(), now.getMonth() - i, 1)
           const mStart = new Date(d.getFullYear(), d.getMonth(), 1, 0, 0, 0, 0)

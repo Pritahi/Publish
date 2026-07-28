@@ -1,3 +1,8 @@
+/**
+ * SigningsView — Signing scheduling and management interface.
+ * Lists signings with filters, add/edit/delete modals, and status workflow.
+ * Fetches data from /api/signings.
+ */
 'use client'
 
 import React, { useState, useEffect, useCallback } from 'react'

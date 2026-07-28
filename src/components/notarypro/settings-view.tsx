@@ -1,3 +1,7 @@
+/**
+ * SettingsView — Application settings including Telegram notification
+ * configuration, notification preferences, and data management.
+ */
 'use client'
 
 import React, { useState } from 'react'

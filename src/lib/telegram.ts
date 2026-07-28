@@ -1,5 +1,5 @@
 // Telegram notification system
-// Supports server env token (HAM's bot) or user-provided token (fallback)
+// Supports server env token or user-provided token (fallback)
 
 export type NotificationType =
   | 'new_signing'

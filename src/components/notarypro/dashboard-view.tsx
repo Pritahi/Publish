@@ -1,3 +1,8 @@
+/**
+ * DashboardView — Main dashboard component displaying KPIs, charts,
+ * upcoming signings, recent activity, and quick actions.
+ * Fetches data from /api/reports.
+ */
 'use client'
 
 import React, { useState, useEffect, useCallback } from 'react'
