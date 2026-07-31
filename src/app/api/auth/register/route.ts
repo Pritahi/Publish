@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { hash } from 'bcryptjs'
 import { z } from 'zod'
+import { rateLimit } from '@/lib/rate-limit'
 
 const registerSchema = z.object({
   name: z.string().min(2, 'Name must be at least 2 characters'),
@@ -11,6 +12,9 @@ const registerSchema = z.object({
 
 export async function POST(request: NextRequest) {
   try {
+    const rateLimitResult = rateLimit(request, { windowMs: 60_000, maxRequests: 5 })
+    if (rateLimitResult) return rateLimitResult
+
     const body = await request.json()
     const { name, email, password } = registerSchema.parse(body)
 

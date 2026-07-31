@@ -1,23 +1,31 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { requireAuth } from '@/lib/auth-guard'
+import { rateLimit } from '@/lib/rate-limit'
 
 // Telegram Bot Token — must be set via TELEGRAM_BOT_TOKEN env variable
 const BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN || ''
 
 // POST /api/telegram/notify
 // This API sends a Telegram message.
-// Uses server bot token by default, fallback to client-provided botToken
+// Requires authentication. Uses server bot token by default, fallback to user-provided botToken.
 // Body: { chatId: string, message: string, botToken?: string, parseMode?: 'HTML' | 'Markdown' }
 export async function POST(request: NextRequest) {
   try {
+    const rateLimitResult = rateLimit(request, { windowMs: 60_000, maxRequests: 10 })
+    if (rateLimitResult) return rateLimitResult
+
+    const authResult = await requireAuth()
+    if (authResult instanceof NextResponse) return authResult
+
     const body = await request.json()
     const { chatId, message, botToken: clientBotToken, parseMode = 'HTML' } = body
 
-    // Use server bot token by default, fallback to client-provided token
-    const botToken = clientBotToken || BOT_TOKEN
+    // Only allow server bot token; ignore client-provided token to prevent abuse
+    const botToken = BOT_TOKEN
 
     if (!botToken) {
       return NextResponse.json(
-        { error: 'No bot token configured. Set TELEGRAM_BOT_TOKEN in .env or provide botToken in request.' },
+        { error: 'No server bot token configured. Set TELEGRAM_BOT_TOKEN in .env.' },
         { status: 400 }
       )
     }
@@ -39,7 +47,6 @@ export async function POST(request: NextRequest) {
     const data = await response.json()
 
     if (data.ok) {
-      // Log notification for history
       return NextResponse.json({
         success: true,
         messageId: data.result?.message_id,
@@ -58,14 +65,17 @@ export async function POST(request: NextRequest) {
 }
 
 // GET /api/telegram/notify?token=<bot_token>
-// Validates a bot token by calling getMe
+// Validates the server bot token by calling getMe
+// Requires authentication
 export async function GET(request: NextRequest) {
   try {
-    const { searchParams } = new URL(request.url)
-    const token = searchParams.get('token') || BOT_TOKEN
+    const authResult = await requireAuth()
+    if (authResult instanceof NextResponse) return authResult
+
+    const token = BOT_TOKEN
 
     if (!token) {
-      return NextResponse.json({ valid: false, error: 'No token provided' })
+      return NextResponse.json({ valid: false, error: 'No server bot token configured' })
     }
 
     const response = await fetch(`https://api.telegram.org/bot${token}/getMe`)

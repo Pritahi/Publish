@@ -21,13 +21,13 @@ export const authOptions: NextAuthOptions = {
         })
 
         if (!user) {
-          throw new Error('No account found with this email')
+          throw new Error('Invalid credentials')
         }
 
         const isValid = await compare(credentials.password, user.passwordHash)
 
         if (!isValid) {
-          throw new Error('Invalid password')
+          throw new Error('Invalid credentials')
         }
 
         return {

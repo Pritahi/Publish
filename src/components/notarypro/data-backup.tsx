@@ -106,7 +106,7 @@ export function DataBackup() {
         return
       }
 
-      const res = await fetch('/api/seed', {
+      const res = await fetch('/api/restore', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(data),

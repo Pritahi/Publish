@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
+import { requireAuth } from '@/lib/auth-guard'
+import { rateLimit } from '@/lib/rate-limit'
 
 function getPeriodRange(period: string) {
   const now = new Date()
@@ -31,12 +33,19 @@ function getPeriodRange(period: string) {
 
 export async function GET(request: NextRequest) {
   try {
+    const rateLimitResult = rateLimit(request)
+    if (rateLimitResult) return rateLimitResult
+
+    const authResult = await requireAuth()
+    if (authResult instanceof NextResponse) return authResult
+    const { userId } = authResult
+
     const { searchParams } = new URL(request.url)
     const period = searchParams.get('period') || 'thisMonth'
     const { start, end } = getPeriodRange(period)
     const now = new Date()
 
-    // Run all queries in parallel
+    // Run all queries in parallel, scoped to userId
     const [
       totalClients,
       totalSignings,
@@ -53,20 +62,20 @@ export async function GET(request: NextRequest) {
       signingsByType,
     ] = await Promise.all([
       // Total clients
-      db.client.count(),
+      db.client.count({ where: { userId } }),
 
       // Total signings
-      db.signing.count(),
+      db.signing.count({ where: { userId } }),
 
       // Total revenue (sum of paid invoices) — all time
       db.invoice.aggregate({
-        where: { status: 'Paid' },
+        where: { status: 'Paid', userId },
         _sum: { amount: true },
       }),
 
       // Pending payments (unpaid invoices)
       db.invoice.aggregate({
-        where: { status: 'Unpaid' },
+        where: { status: 'Unpaid', userId },
         _sum: { amount: true },
       }),
 
@@ -75,13 +84,14 @@ export async function GET(request: NextRequest) {
         where: {
           dueDate: { lt: now },
           status: { not: 'Paid' },
+          userId,
         },
         _sum: { amount: true },
       }),
 
       // Total expenses for the selected period
       db.expense.aggregate({
-        where: { date: { gte: start, lte: end } },
+        where: { date: { gte: start, lte: end }, userId },
         _sum: { amount: true },
       }),
 
@@ -90,6 +100,7 @@ export async function GET(request: NextRequest) {
         where: {
           date: { gte: start, lte: end },
           mileage: { not: null },
+          userId,
         },
         _sum: { mileage: true },
       }),
@@ -110,13 +121,14 @@ export async function GET(request: NextRequest) {
                 where: {
                   status: 'Paid',
                   paidDate: { gte: mStart, lte: mEnd },
+                  userId,
                 },
                 _sum: { amount: true },
               })
               .then((result) => {
                 months.push({
                   month: label,
-                  revenue: result._sum.amount ?? 0,
+                  revenue: Number(result._sum.amount ?? 0),
                 })
               })
           )
@@ -127,12 +139,13 @@ export async function GET(request: NextRequest) {
       // Expenses by category (for the selected period)
       db.expense.groupBy({
         by: ['category'],
-        where: { date: { gte: start, lte: end } },
+        where: { date: { gte: start, lte: end }, userId },
         _sum: { amount: true },
       }),
 
       // Top 5 clients by revenue
       db.client.findMany({
+        where: { userId },
         take: 5,
         include: {
           _count: { select: { signings: true, invoices: true } },
@@ -145,13 +158,14 @@ export async function GET(request: NextRequest) {
       }).then(clients =>
         clients.map(c => ({
           name: c.name,
-          totalRevenue: c.invoices.reduce((sum, i) => sum + i.amount, 0),
+          totalRevenue: c.invoices.reduce((sum, i) => sum + Number(i.amount), 0),
           signingCount: c._count.signings,
         })).sort((a, b) => b.totalRevenue - a.totalRevenue)
       ),
 
       // Recent 5 signings
       db.signing.findMany({
+        where: { userId },
         orderBy: { createdAt: 'desc' },
         take: 5,
         include: {
@@ -161,7 +175,7 @@ export async function GET(request: NextRequest) {
 
       // Upcoming 5 signings (date >= now)
       db.signing.findMany({
-        where: { date: { gte: now } },
+        where: { date: { gte: now }, userId },
         orderBy: { date: 'asc' },
         take: 5,
         include: {
@@ -172,15 +186,15 @@ export async function GET(request: NextRequest) {
       // Signings by service type (for the selected period)
       db.signing.groupBy({
         by: ['serviceType'],
-        where: { date: { gte: start, lte: end } },
+        where: { date: { gte: start, lte: end }, userId },
         _count: { serviceType: true },
       }),
     ])
 
     // Calculate derived values
-    const totalIncome = totalRevenue._sum.amount ?? 0
-    const totalExp = periodExpenses._sum.amount ?? 0
-    const mileage = periodMileage._sum.mileage ?? 0
+    const totalIncome = Number(totalRevenue._sum.amount ?? 0)
+    const totalExp = Number(periodExpenses._sum.amount ?? 0)
+    const mileage = Number(periodMileage._sum.mileage ?? 0)
     const completedSignings = totalSignings
 
     return NextResponse.json({
@@ -188,8 +202,8 @@ export async function GET(request: NextRequest) {
       totalClients,
       totalSignings,
       totalRevenue: totalIncome,
-      pendingPayments: pendingPayments._sum.amount ?? 0,
-      overduePayments: overduePayments._sum.amount ?? 0,
+      pendingPayments: Number(pendingPayments._sum.amount ?? 0),
+      overduePayments: Number(overduePayments._sum.amount ?? 0),
       totalExpenses: totalExp,
       totalMileage: mileage,
 
@@ -202,7 +216,7 @@ export async function GET(request: NextRequest) {
       monthlyRevenue,
       expenseCategories: expensesByCategory.map(e => ({
         category: e.category,
-        amount: e._sum.amount ?? 0,
+        amount: Number(e._sum.amount ?? 0),
       })),
       signingsByType: signingsByType.map(s => ({
         type: s.serviceType,
@@ -210,8 +224,16 @@ export async function GET(request: NextRequest) {
       })),
       topClients,
 
-      recentSignings,
-      upcomingSignings,
+      recentSignings: recentSignings.map(s => ({
+        ...s,
+        fee: Number(s.fee),
+        mileage: s.mileage !== null ? Number(s.mileage) : null,
+      })),
+      upcomingSignings: upcomingSignings.map(s => ({
+        ...s,
+        fee: Number(s.fee),
+        mileage: s.mileage !== null ? Number(s.mileage) : null,
+      })),
     })
   } catch (error) {
     console.error('GET /api/reports error:', error)

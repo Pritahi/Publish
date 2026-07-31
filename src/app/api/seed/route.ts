@@ -1,26 +1,33 @@
-import { NextResponse } from 'next/server'
+import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
+import { requireAdmin } from '@/lib/auth-guard'
 
 /**
- * ⚠️ WARNING: Seed Endpoint
+ * Seed Endpoint — Admin Only
  *
  * This endpoint DELETES ALL existing data and replaces it with demo data.
- * - DO NOT expose this endpoint in production without authentication.
- * - Consider disabling or removing this route before deploying to production.
- * - For initial setup only — use once, then remove or protect with auth.
+ * Requires admin authentication.
  */
-export async function POST() {
+export async function POST(request: NextRequest) {
   try {
-    // Clean seed - delete everything first
+    const authResult = await requireAdmin()
+    if (authResult instanceof NextResponse) return authResult
+
+    // Clean seed - delete everything first (except the admin user)
     await db.invoice.deleteMany()
     await db.signing.deleteMany()
     await db.expense.deleteMany()
     await db.client.deleteMany()
+    await db.journalEntry.deleteMany()
+    await db.settings.deleteMany()
+
+    const userId = authResult.userId
 
     // ─── Clients (8) ───
     const clients = await db.client.createMany({
       data: [
         {
+          userId,
           name: 'Maria Gonzalez',
           email: 'maria.gonzalez@email.com',
           phone: '(305) 555-0142',
@@ -29,6 +36,7 @@ export async function POST() {
           notes: 'Prefers afternoon appointments. Bilingual (English/Spanish).',
         },
         {
+          userId,
           name: 'James Carter',
           email: 'jcarter@homemail.net',
           phone: '(770) 555-0198',
@@ -36,6 +44,7 @@ export async function POST() {
           notes: 'First-time homebuyer closing.',
         },
         {
+          userId,
           name: 'Pacific Coast Title Agency',
           email: 'closings@pacificcoasttitle.com',
           phone: '(310) 555-0267',
@@ -43,6 +52,7 @@ export async function POST() {
           address: '4500 Wilshire Blvd, Los Angeles, CA 90010',
         },
         {
+          userId,
           name: 'Sarah Mitchell',
           email: 'sarah.m@workemail.com',
           phone: '(214) 555-0331',
@@ -51,12 +61,14 @@ export async function POST() {
           notes: 'Loan signing specialist. Requires dual-signer appointments.',
         },
         {
+          userId,
           name: 'Robert Kim',
           email: 'robert.kim@email.com',
           phone: '(206) 555-0478',
           address: '400 Broad St, Seattle, WA 98109',
         },
         {
+          userId,
           name: 'Sunrise Real Estate Group',
           email: 'notary@sunriserealty.com',
           phone: '(602) 555-0512',
@@ -65,6 +77,7 @@ export async function POST() {
           notes: 'Volume account - 5-10 signings per month.',
         },
         {
+          userId,
           name: 'Linda Patterson',
           email: 'lpatterson@lawfirm.com',
           phone: '(312) 555-0645',
@@ -73,6 +86,7 @@ export async function POST() {
           notes: 'Estate planning documents. Requires witness.',
         },
         {
+          userId,
           name: 'David Chen',
           email: 'dchen@techcorp.io',
           phone: '(408) 555-0789',
@@ -84,7 +98,7 @@ export async function POST() {
     })
 
     // Fetch created clients for references
-    const allClients = await db.client.findMany()
+    const allClients = await db.client.findMany({ where: { userId } })
 
     const now = new Date()
     const threeMonthsAgo = new Date(now.getFullYear(), now.getMonth() - 2, 1)
@@ -95,9 +109,10 @@ export async function POST() {
     const signingsData = [
       // 3 months ago (5 signings)
       {
+        userId,
         clientId: allClients[0].id,
         date: new Date(threeMonthsAgo.getFullYear(), threeMonthsAgo.getMonth(), 3),
-        time: '10:00 AM',
+        time: '10:00',
         location: '1240 Brickell Ave, Miami, FL 33131',
         serviceType: 'Real Estate Closing',
         fee: 250,
@@ -106,9 +121,10 @@ export async function POST() {
         mileage: 18,
       },
       {
+        userId,
         clientId: allClients[1].id,
         date: new Date(threeMonthsAgo.getFullYear(), threeMonthsAgo.getMonth(), 7),
-        time: '2:00 PM',
+        time: '14:00',
         location: '890 Peachtree St NE, Atlanta, GA 30308',
         serviceType: 'General Notary',
         fee: 35,
@@ -116,9 +132,10 @@ export async function POST() {
         mileage: 22,
       },
       {
+        userId,
         clientId: allClients[2].id,
         date: new Date(threeMonthsAgo.getFullYear(), threeMonthsAgo.getMonth(), 12),
-        time: '9:00 AM',
+        time: '09:00',
         location: '4500 Wilshire Blvd, Los Angeles, CA 90010',
         serviceType: 'Loan Signing',
         fee: 175,
@@ -127,9 +144,10 @@ export async function POST() {
         mileage: 30,
       },
       {
+        userId,
         clientId: allClients[5].id,
         date: new Date(threeMonthsAgo.getFullYear(), threeMonthsAgo.getMonth(), 18),
-        time: '11:30 AM',
+        time: '11:30',
         location: '3030 N 3rd St, Phoenix, AZ 85012',
         serviceType: 'Real Estate Closing',
         fee: 200,
@@ -137,9 +155,10 @@ export async function POST() {
         mileage: 15,
       },
       {
+        userId,
         clientId: allClients[3].id,
         date: new Date(threeMonthsAgo.getFullYear(), threeMonthsAgo.getMonth(), 25),
-        time: '3:00 PM',
+        time: '15:00',
         location: '2200 Ross Ave, Dallas, TX 75201',
         serviceType: 'Loan Signing',
         fee: 175,
@@ -149,9 +168,10 @@ export async function POST() {
       },
       // 2 months ago (5 signings)
       {
+        userId,
         clientId: allClients[4].id,
         date: new Date(twoMonthsAgo.getFullYear(), twoMonthsAgo.getMonth(), 2),
-        time: '1:00 PM',
+        time: '13:00',
         location: '400 Broad St, Seattle, WA 98109',
         serviceType: 'Power of Attorney',
         fee: 75,
@@ -159,9 +179,10 @@ export async function POST() {
         mileage: 12,
       },
       {
+        userId,
         clientId: allClients[6].id,
         date: new Date(twoMonthsAgo.getFullYear(), twoMonthsAgo.getMonth(), 8),
-        time: '10:00 AM',
+        time: '10:00',
         location: '233 S Wacker Dr, Chicago, IL 60606',
         serviceType: 'Affidavit',
         fee: 50,
@@ -169,9 +190,10 @@ export async function POST() {
         mileage: 25,
       },
       {
+        userId,
         clientId: allClients[0].id,
         date: new Date(twoMonthsAgo.getFullYear(), twoMonthsAgo.getMonth(), 14),
-        time: '4:00 PM',
+        time: '16:00',
         location: '55 SW 1st St, Miami, FL 33130',
         serviceType: 'General Notary',
         fee: 40,
@@ -179,9 +201,10 @@ export async function POST() {
         mileage: 8,
       },
       {
+        userId,
         clientId: allClients[7].id,
         date: new Date(twoMonthsAgo.getFullYear(), twoMonthsAgo.getMonth(), 19),
-        time: '9:00 AM',
+        time: '09:00',
         location: '100 Tech Way, San Jose, CA 95110',
         serviceType: 'I-9 Verification',
         fee: 45,
@@ -190,9 +213,10 @@ export async function POST() {
         mileage: 35,
       },
       {
+        userId,
         clientId: allClients[5].id,
         date: new Date(twoMonthsAgo.getFullYear(), twoMonthsAgo.getMonth(), 24),
-        time: '2:30 PM',
+        time: '14:30',
         location: '1200 E Missouri Ave, Phoenix, AZ 85014',
         serviceType: 'Loan Signing',
         fee: 175,
@@ -201,9 +225,10 @@ export async function POST() {
       },
       // Current month (5 signings)
       {
+        userId,
         clientId: allClients[2].id,
         date: new Date(oneMonthAgo.getFullYear(), oneMonthAgo.getMonth(), 2),
-        time: '11:00 AM',
+        time: '11:00',
         location: '6801 Hollywood Blvd, Los Angeles, CA 90028',
         serviceType: 'Real Estate Closing',
         fee: 225,
@@ -211,9 +236,10 @@ export async function POST() {
         mileage: 28,
       },
       {
+        userId,
         clientId: allClients[1].id,
         date: new Date(oneMonthAgo.getFullYear(), oneMonthAgo.getMonth(), 5),
-        time: '3:00 PM',
+        time: '15:00',
         location: '50 Hurt Plaza SE, Atlanta, GA 30303',
         serviceType: 'Loan Signing',
         fee: 175,
@@ -221,9 +247,10 @@ export async function POST() {
         mileage: 10,
       },
       {
+        userId,
         clientId: allClients[6].id,
         date: new Date(oneMonthAgo.getFullYear(), oneMonthAgo.getMonth(), 10),
-        time: '10:30 AM',
+        time: '10:30',
         location: '233 S Wacker Dr, Chicago, IL 60606',
         serviceType: 'Power of Attorney',
         fee: 75,
@@ -232,9 +259,10 @@ export async function POST() {
         mileage: null,
       },
       {
+        userId,
         clientId: allClients[4].id,
         date: new Date(oneMonthAgo.getFullYear(), oneMonthAgo.getMonth(), 15),
-        time: '1:00 PM',
+        time: '13:00',
         location: '200 2nd Ave S, Seattle, WA 98104',
         serviceType: 'Affidavit',
         fee: 50,
@@ -242,9 +270,10 @@ export async function POST() {
         mileage: null,
       },
       {
+        userId,
         clientId: allClients[3].id,
         date: new Date(oneMonthAgo.getFullYear(), oneMonthAgo.getMonth(), 20),
-        time: '9:00 AM',
+        time: '09:00',
         location: '2200 Ross Ave, Dallas, TX 75201',
         serviceType: 'Loan Signing',
         fee: 175,
@@ -255,12 +284,12 @@ export async function POST() {
     ]
 
     const signings = await db.signing.createMany({ data: signingsData })
-    const allSignings = await db.signing.findMany()
+    const allSignings = await db.signing.findMany({ where: { userId } })
 
     // ─── Invoices (12) ───
     const invoicesData = [
-      // Completed signings -> Paid invoices
       {
+        userId,
         invoiceNo: 'INV-0001',
         clientId: allClients[0].id,
         signingId: allSignings[0].id,
@@ -272,6 +301,7 @@ export async function POST() {
         notes: 'Real estate closing - commercial property.',
       },
       {
+        userId,
         invoiceNo: 'INV-0002',
         clientId: allClients[1].id,
         signingId: allSignings[1].id,
@@ -282,6 +312,7 @@ export async function POST() {
         paidDate: new Date(threeMonthsAgo.getFullYear(), threeMonthsAgo.getMonth(), 22),
       },
       {
+        userId,
         invoiceNo: 'INV-0003',
         clientId: allClients[2].id,
         signingId: allSignings[2].id,
@@ -293,6 +324,7 @@ export async function POST() {
         notes: 'FHA loan closing.',
       },
       {
+        userId,
         invoiceNo: 'INV-0004',
         clientId: allClients[5].id,
         signingId: allSignings[3].id,
@@ -303,6 +335,7 @@ export async function POST() {
         paidDate: new Date(threeMonthsAgo.getFullYear(), threeMonthsAgo.getMonth() + 1, 10),
       },
       {
+        userId,
         invoiceNo: 'INV-0005',
         clientId: allClients[4].id,
         signingId: allSignings[5].id,
@@ -313,6 +346,7 @@ export async function POST() {
         paidDate: new Date(twoMonthsAgo.getFullYear(), twoMonthsAgo.getMonth(), 18),
       },
       {
+        userId,
         invoiceNo: 'INV-0006',
         clientId: allClients[6].id,
         signingId: allSignings[6].id,
@@ -323,6 +357,7 @@ export async function POST() {
         paidDate: new Date(twoMonthsAgo.getFullYear(), twoMonthsAgo.getMonth(), 28),
       },
       {
+        userId,
         invoiceNo: 'INV-0007',
         clientId: allClients[0].id,
         signingId: allSignings[7].id,
@@ -334,6 +369,7 @@ export async function POST() {
       },
       // Unpaid invoices
       {
+        userId,
         invoiceNo: 'INV-0008',
         clientId: allClients[7].id,
         signingId: allSignings[8].id,
@@ -343,6 +379,7 @@ export async function POST() {
         dueDate: new Date(twoMonthsAgo.getFullYear(), twoMonthsAgo.getMonth() + 1, 20),
       },
       {
+        userId,
         invoiceNo: 'INV-0009',
         clientId: allClients[5].id,
         signingId: allSignings[9].id,
@@ -353,6 +390,7 @@ export async function POST() {
         notes: 'Refinance loan signing.',
       },
       {
+        userId,
         invoiceNo: 'INV-0010',
         clientId: allClients[2].id,
         signingId: allSignings[10].id,
@@ -363,6 +401,7 @@ export async function POST() {
       },
       // Overdue invoices
       {
+        userId,
         invoiceNo: 'INV-0011',
         clientId: allClients[1].id,
         signingId: allSignings[11].id,
@@ -373,6 +412,7 @@ export async function POST() {
         notes: 'OVERDUE - follow up required.',
       },
       {
+        userId,
         invoiceNo: 'INV-0012',
         clientId: allClients[3].id,
         amount: 85,
@@ -388,6 +428,7 @@ export async function POST() {
     // ─── Expenses (10) in current month ───
     const expensesData = [
       {
+        userId,
         category: 'Gas',
         description: 'Gas for mobile notary appointments',
         amount: 67.50,
@@ -395,6 +436,7 @@ export async function POST() {
         notes: 'Shell station fill-ups',
       },
       {
+        userId,
         category: 'Office Supplies',
         description: 'Notary stamps, seals, and certificate paper',
         amount: 45.00,
@@ -402,18 +444,21 @@ export async function POST() {
         notes: 'Replenished notary journal and ink pad',
       },
       {
+        userId,
         category: 'Insurance',
         description: 'Errors & Omissions insurance monthly premium',
         amount: 35.00,
         date: new Date(oneMonthAgo.getFullYear(), oneMonthAgo.getMonth(), 1),
       },
       {
+        userId,
         category: 'Stamps',
         description: 'USPS postage for mailing signed documents',
         amount: 12.75,
         date: new Date(oneMonthAgo.getFullYear(), oneMonthAgo.getMonth(), 8),
       },
       {
+        userId,
         category: 'Printing',
         description: 'Printed loan signing documents and forms',
         amount: 28.50,
@@ -421,6 +466,7 @@ export async function POST() {
         notes: 'FedEx Office - 120 pages double-sided',
       },
       {
+        userId,
         category: 'Marketing',
         description: 'Business cards and brochures',
         amount: 89.99,
@@ -428,12 +474,14 @@ export async function POST() {
         notes: 'Vistaprint order - 500 business cards',
       },
       {
+        userId,
         category: 'Phone',
         description: 'Mobile phone bill (business line)',
         amount: 65.00,
         date: new Date(oneMonthAgo.getFullYear(), oneMonthAgo.getMonth(), 7),
       },
       {
+        userId,
         category: 'Software',
         description: 'DocuSign monthly subscription',
         amount: 25.00,
@@ -441,12 +489,14 @@ export async function POST() {
         notes: 'Business plan with unlimited envelopes',
       },
       {
+        userId,
         category: 'Travel',
         description: 'Parking fees for downtown appointments',
         amount: 18.00,
         date: new Date(oneMonthAgo.getFullYear(), oneMonthAgo.getMonth(), 12),
       },
       {
+        userId,
         category: 'Miscellaneous',
         description: 'Notary commission renewal processing fee',
         amount: 120.00,
