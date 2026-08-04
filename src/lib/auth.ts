@@ -1,6 +1,6 @@
 import type { NextAuthOptions } from 'next-auth'
 import CredentialsProvider from 'next-auth/providers/credentials'
-import { db } from '@/lib/db'
+import { getDb } from '@/lib/db'
 import { compare } from 'bcryptjs'
 
 export const authOptions: NextAuthOptions = {
@@ -16,15 +16,18 @@ export const authOptions: NextAuthOptions = {
           throw new Error('Email and password are required')
         }
 
-        const user = await db.user.findUnique({
-          where: { email: credentials.email },
-        })
+        const db = getDb()
+        const { data: user, error } = await db
+          .from('users')
+          .select('id, name, email, role, password_hash')
+          .eq('email', credentials.email)
+          .single()
 
-        if (!user) {
+        if (error || !user) {
           throw new Error('Invalid credentials')
         }
 
-        const isValid = await compare(credentials.password, user.passwordHash)
+        const isValid = await compare(credentials.password, user.password_hash)
 
         if (!isValid) {
           throw new Error('Invalid credentials')

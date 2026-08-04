@@ -10,6 +10,7 @@ import ExpensesView from '@/components/notarypro/expenses-view'
 import ReportsView from '@/components/notarypro/reports-view'
 import EJournalView from '@/components/notarypro/ejournal-view'
 import SettingsView from '@/components/notarypro/settings-view'
+import EmailParsingView from '@/components/notarypro/email-parsing-view'
 
 export default function Home() {
   const [activePage, setActivePage] = useState('dashboard')
@@ -18,6 +19,7 @@ export default function Home() {
     dashboard: <DashboardView />,
     clients: <ClientsView />,
     signings: <SigningsView />,
+    'email-parsing': <EmailParsingView />,
     invoices: <InvoicesView />,
     expenses: <ExpensesView />,
     reports: <ReportsView />,

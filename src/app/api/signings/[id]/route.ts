@@ -1,9 +1,21 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { db } from '@/lib/db'
+import { getDb, toCamelCaseObj } from '@/lib/db'
 import { requireAuth } from '@/lib/auth-guard'
 import { rateLimit } from '@/lib/rate-limit'
 import { signingUpdateSchema } from '@/lib/validations'
 import { ZodError } from 'zod'
+
+/** Map a Supabase signing row (snake_case + `clients` join) to camelCase frontend shape */
+function mapSigningRow(row: Record<string, unknown>) {
+  const { clients, ...rest } = row
+  const camel = toCamelCaseObj(rest)
+  return {
+    ...camel,
+    fee: Number(camel.fee),
+    mileage: camel.mileage !== null ? Number(camel.mileage) : null,
+    client: clients ? toCamelCaseObj(clients as Record<string, unknown>) : null,
+  }
+}
 
 // GET /api/signings/[id]
 export async function GET(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
@@ -16,16 +28,20 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     const { userId } = authResult
 
     const { id } = await params
-    const signing = await db.signing.findFirst({
-      where: { id, userId },
-      include: {
-        client: { select: { id: true, name: true, email: true, phone: true } },
-      },
-    })
-    if (!signing) {
+    const db = getDb()
+
+    const { data, error } = await db
+      .from('signings')
+      .select('*, clients(id, name, email, phone)')
+      .eq('id', id)
+      .eq('user_id', userId)
+      .single()
+
+    if (error || !data) {
       return NextResponse.json({ error: 'Signing not found' }, { status: 404 })
     }
-    return NextResponse.json({ ...signing, fee: Number(signing.fee), mileage: signing.mileage !== null ? Number(signing.mileage) : null })
+
+    return NextResponse.json(mapSigningRow(data as Record<string, unknown>))
   } catch (error) {
     console.error('GET /api/signings/[id] error:', error)
     return NextResponse.json({ error: 'Failed to fetch signing' }, { status: 500 })
@@ -46,32 +62,45 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
     const body = await request.json()
     const validated = signingUpdateSchema.parse(body)
 
+    const db = getDb()
+
     // Verify ownership
-    const existing = await db.signing.findFirst({ where: { id, userId } })
-    if (!existing) {
+    const { data: existing, error: fetchError } = await db
+      .from('signings')
+      .select('id, client_id')
+      .eq('id', id)
+      .eq('user_id', userId)
+      .single()
+
+    if (fetchError || !existing) {
       return NextResponse.json({ error: 'Signing not found' }, { status: 404 })
     }
 
-    const data: Record<string, unknown> = {}
-    if (validated.clientId) data.clientId = validated.clientId
-    if (validated.date) data.date = new Date(validated.date)
-    if (validated.time !== undefined) data.time = validated.time || null
-    if (validated.location !== undefined) data.location = validated.location
-    if (validated.serviceType) data.serviceType = validated.serviceType
-    if (validated.fee !== undefined) data.fee = validated.fee
-    if (validated.mileage !== undefined) data.mileage = validated.mileage ?? null
-    if (validated.status) data.status = validated.status
-    if (validated.notes !== undefined) data.notes = validated.notes || null
+    // Build update data with snake_case keys
+    const updateData: Record<string, unknown> = {}
+    if (validated.clientId) updateData.client_id = validated.clientId
+    if (validated.date) updateData.date = validated.date
+    if (validated.time !== undefined) updateData.time = validated.time || null
+    if (validated.location !== undefined) updateData.location = validated.location
+    if (validated.serviceType) updateData.service_type = validated.serviceType
+    if (validated.fee !== undefined) updateData.fee = validated.fee
+    if (validated.mileage !== undefined) updateData.mileage = validated.mileage ?? null
+    if (validated.status) updateData.status = validated.status
+    if (validated.notes !== undefined) updateData.notes = validated.notes || null
 
-    const signing = await db.signing.update({
-      where: { id },
-      data,
-      include: {
-        client: { select: { id: true, name: true } },
-      },
-    })
+    const { data: signing, error: updateError } = await db
+      .from('signings')
+      .update(updateData)
+      .eq('id', id)
+      .select('*, clients(id, name, email, phone)')
+      .single()
 
-    return NextResponse.json({ ...signing, fee: Number(signing.fee), mileage: signing.mileage !== null ? Number(signing.mileage) : null })
+    if (updateError || !signing) {
+      console.error('Supabase PUT signing error:', updateError)
+      return NextResponse.json({ error: 'Failed to update signing' }, { status: 500 })
+    }
+
+    return NextResponse.json(mapSigningRow(signing as Record<string, unknown>))
   } catch (error) {
     if (error instanceof ZodError) {
       return NextResponse.json({ error: 'Validation failed', details: error.issues }, { status: 400 })
@@ -92,14 +121,30 @@ export async function DELETE(request: NextRequest, { params }: { params: Promise
     const { userId } = authResult
 
     const { id } = await params
+    const db = getDb()
 
     // Verify ownership
-    const existing = await db.signing.findFirst({ where: { id, userId } })
-    if (!existing) {
+    const { data: existing, error: fetchError } = await db
+      .from('signings')
+      .select('id')
+      .eq('id', id)
+      .eq('user_id', userId)
+      .single()
+
+    if (fetchError || !existing) {
       return NextResponse.json({ error: 'Signing not found' }, { status: 404 })
     }
 
-    await db.signing.delete({ where: { id } })
+    const { error: deleteError } = await db
+      .from('signings')
+      .delete()
+      .eq('id', id)
+
+    if (deleteError) {
+      console.error('Supabase DELETE signing error:', deleteError)
+      return NextResponse.json({ error: 'Failed to delete signing' }, { status: 500 })
+    }
+
     return NextResponse.json({ success: true })
   } catch (error) {
     console.error('DELETE /api/signings/[id] error:', error)

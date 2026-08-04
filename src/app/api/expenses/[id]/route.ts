@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { db } from '@/lib/db'
+import { getDb, toCamelCaseObj, toSnakeCaseObj } from '@/lib/db'
 import { requireAuth } from '@/lib/auth-guard'
 import { rateLimit } from '@/lib/rate-limit'
 import { expenseUpdateSchema } from '@/lib/validations'
@@ -16,11 +16,21 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     const { userId } = authResult
 
     const { id } = await params
-    const expense = await db.expense.findFirst({ where: { id, userId } })
-    if (!expense) {
+    const supabase = getDb()
+
+    const { data, error } = await supabase
+      .from('expenses')
+      .select('*')
+      .eq('id', id)
+      .eq('user_id', userId)
+      .single()
+
+    if (error || !data) {
       return NextResponse.json({ error: 'Expense not found' }, { status: 404 })
     }
-    return NextResponse.json({ ...expense, amount: Number(expense.amount) })
+
+    const result = toCamelCaseObj(data as Record<string, unknown>)
+    return NextResponse.json({ ...result, amount: Number(result.amount) })
   } catch (error) {
     console.error('GET /api/expenses/[id] error:', error)
     return NextResponse.json({ error: 'Failed to fetch expense' }, { status: 500 })
@@ -41,21 +51,44 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
     const body = await request.json()
     const validated = expenseUpdateSchema.parse(body)
 
+    const supabase = getDb()
+
     // Verify ownership
-    const existing = await db.expense.findFirst({ where: { id, userId } })
-    if (!existing) {
+    const { data: existing, error: fetchError } = await supabase
+      .from('expenses')
+      .select('id')
+      .eq('id', id)
+      .eq('user_id', userId)
+      .single()
+
+    if (fetchError || !existing) {
       return NextResponse.json({ error: 'Expense not found' }, { status: 404 })
     }
 
-    const data: Record<string, unknown> = {}
-    if (validated.category) data.category = validated.category
-    if (validated.description !== undefined) data.description = validated.description
-    if (validated.amount !== undefined) data.amount = validated.amount
-    if (validated.date) data.date = new Date(validated.date)
-    if (validated.notes !== undefined) data.notes = validated.notes || null
+    // Build update data with only provided fields
+    const updateData: Record<string, unknown> = {}
+    if (validated.category) updateData.category = validated.category
+    if (validated.description !== undefined) updateData.description = validated.description
+    if (validated.amount !== undefined) updateData.amount = validated.amount
+    if (validated.date) updateData.date = validated.date
+    if (validated.notes !== undefined) updateData.notes = validated.notes || null
 
-    const expense = await db.expense.update({ where: { id }, data })
-    return NextResponse.json({ ...expense, amount: Number(expense.amount) })
+    const snakeUpdateData = toSnakeCaseObj(updateData)
+
+    const { data, error } = await supabase
+      .from('expenses')
+      .update(snakeUpdateData)
+      .eq('id', id)
+      .select()
+      .single()
+
+    if (error) {
+      console.error('PUT /api/expenses/[id] Supabase error:', error)
+      return NextResponse.json({ error: 'Failed to update expense' }, { status: 500 })
+    }
+
+    const result = toCamelCaseObj(data as Record<string, unknown>)
+    return NextResponse.json({ ...result, amount: Number(result.amount) })
   } catch (error) {
     if (error instanceof ZodError) {
       return NextResponse.json({ error: 'Validation failed', details: error.issues }, { status: 400 })
@@ -76,14 +109,30 @@ export async function DELETE(request: NextRequest, { params }: { params: Promise
     const { userId } = authResult
 
     const { id } = await params
+    const supabase = getDb()
 
     // Verify ownership
-    const existing = await db.expense.findFirst({ where: { id, userId } })
-    if (!existing) {
+    const { data: existing, error: fetchError } = await supabase
+      .from('expenses')
+      .select('id')
+      .eq('id', id)
+      .eq('user_id', userId)
+      .single()
+
+    if (fetchError || !existing) {
       return NextResponse.json({ error: 'Expense not found' }, { status: 404 })
     }
 
-    await db.expense.delete({ where: { id } })
+    const { error } = await supabase
+      .from('expenses')
+      .delete()
+      .eq('id', id)
+
+    if (error) {
+      console.error('DELETE /api/expenses/[id] Supabase error:', error)
+      return NextResponse.json({ error: 'Failed to delete expense' }, { status: 500 })
+    }
+
     return NextResponse.json({ success: true })
   } catch (error) {
     console.error('DELETE /api/expenses/[id] error:', error)

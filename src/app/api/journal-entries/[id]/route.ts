@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { db } from '@/lib/db'
+import { getDb, toCamelCaseObj, toSnakeCaseObj } from '@/lib/db'
 import { requireAuth } from '@/lib/auth-guard'
 import { rateLimit } from '@/lib/rate-limit'
 import { journalEntryUpdateSchema } from '@/lib/validations'
@@ -16,11 +16,21 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     const { userId } = authResult
 
     const { id } = await params
-    const entry = await db.journalEntry.findFirst({ where: { id, userId } })
-    if (!entry) {
+    const supabase = getDb()
+
+    const { data, error } = await supabase
+      .from('journal_entries')
+      .select('*')
+      .eq('id', id)
+      .eq('user_id', userId)
+      .single()
+
+    if (error || !data) {
       return NextResponse.json({ error: 'Journal entry not found' }, { status: 404 })
     }
-    return NextResponse.json({ ...entry, fee: Number(entry.fee) })
+
+    const result = toCamelCaseObj(data as Record<string, unknown>)
+    return NextResponse.json({ ...result, fee: Number(result.fee) })
   } catch (error) {
     console.error('GET /api/journal-entries/[id] error:', error)
     return NextResponse.json({ error: 'Failed to fetch journal entry' }, { status: 500 })
@@ -41,31 +51,54 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
     const body = await request.json()
     const validated = journalEntryUpdateSchema.parse(body)
 
+    const supabase = getDb()
+
     // Verify ownership
-    const existing = await db.journalEntry.findFirst({ where: { id, userId } })
-    if (!existing) {
+    const { data: existing, error: fetchError } = await supabase
+      .from('journal_entries')
+      .select('id')
+      .eq('id', id)
+      .eq('user_id', userId)
+      .single()
+
+    if (fetchError || !existing) {
       return NextResponse.json({ error: 'Journal entry not found' }, { status: 404 })
     }
 
-    const data: Record<string, unknown> = {}
-    if (validated.signerName) data.signerName = validated.signerName
-    if (validated.idType !== undefined) data.idType = validated.idType
-    if (validated.idNumber !== undefined) data.idNumber = validated.idNumber
-    if (validated.idExpiry !== undefined) data.idExpiry = validated.idExpiry
-    if (validated.documentType !== undefined) data.documentType = validated.documentType
-    if (validated.documentDescription !== undefined) data.documentDescription = validated.documentDescription
-    if (validated.pageCount !== undefined) data.pageCount = validated.pageCount
-    if (validated.fee !== undefined) data.fee = validated.fee
-    if (validated.date) data.date = validated.date
-    if (validated.time !== undefined) data.time = validated.time
-    if (validated.state !== undefined) data.state = validated.state
-    if (validated.county !== undefined) data.county = validated.county
-    if (validated.notaryActType !== undefined) data.notaryActType = validated.notaryActType
-    if (validated.notes !== undefined) data.notes = validated.notes
-    if (validated.signatureDataUrl !== undefined) data.signatureDataUrl = validated.signatureDataUrl
+    // Build update data with only provided fields
+    const updateData: Record<string, unknown> = {}
+    if (validated.signerName) updateData.signerName = validated.signerName
+    if (validated.idType !== undefined) updateData.idType = validated.idType
+    if (validated.idNumber !== undefined) updateData.idNumber = validated.idNumber
+    if (validated.idExpiry !== undefined) updateData.idExpiry = validated.idExpiry
+    if (validated.documentType !== undefined) updateData.documentType = validated.documentType
+    if (validated.documentDescription !== undefined) updateData.documentDescription = validated.documentDescription
+    if (validated.pageCount !== undefined) updateData.pageCount = validated.pageCount
+    if (validated.fee !== undefined) updateData.fee = validated.fee
+    if (validated.date) updateData.date = validated.date
+    if (validated.time !== undefined) updateData.time = validated.time
+    if (validated.state !== undefined) updateData.state = validated.state
+    if (validated.county !== undefined) updateData.county = validated.county
+    if (validated.notaryActType !== undefined) updateData.notaryActType = validated.notaryActType
+    if (validated.notes !== undefined) updateData.notes = validated.notes
+    if (validated.signatureDataUrl !== undefined) updateData.signatureDataUrl = validated.signatureDataUrl
 
-    const entry = await db.journalEntry.update({ where: { id }, data })
-    return NextResponse.json({ ...entry, fee: Number(entry.fee) })
+    const snakeUpdateData = toSnakeCaseObj(updateData)
+
+    const { data, error } = await supabase
+      .from('journal_entries')
+      .update(snakeUpdateData)
+      .eq('id', id)
+      .select()
+      .single()
+
+    if (error) {
+      console.error('PUT /api/journal-entries/[id] Supabase error:', error)
+      return NextResponse.json({ error: 'Failed to update journal entry' }, { status: 500 })
+    }
+
+    const result = toCamelCaseObj(data as Record<string, unknown>)
+    return NextResponse.json({ ...result, fee: Number(result.fee) })
   } catch (error) {
     if (error instanceof ZodError) {
       return NextResponse.json({ error: 'Validation failed', details: error.issues }, { status: 400 })
@@ -86,14 +119,30 @@ export async function DELETE(request: NextRequest, { params }: { params: Promise
     const { userId } = authResult
 
     const { id } = await params
+    const supabase = getDb()
 
     // Verify ownership
-    const existing = await db.journalEntry.findFirst({ where: { id, userId } })
-    if (!existing) {
+    const { data: existing, error: fetchError } = await supabase
+      .from('journal_entries')
+      .select('id')
+      .eq('id', id)
+      .eq('user_id', userId)
+      .single()
+
+    if (fetchError || !existing) {
       return NextResponse.json({ error: 'Journal entry not found' }, { status: 404 })
     }
 
-    await db.journalEntry.delete({ where: { id } })
+    const { error } = await supabase
+      .from('journal_entries')
+      .delete()
+      .eq('id', id)
+
+    if (error) {
+      console.error('DELETE /api/journal-entries/[id] Supabase error:', error)
+      return NextResponse.json({ error: 'Failed to delete journal entry' }, { status: 500 })
+    }
+
     return NextResponse.json({ success: true })
   } catch (error) {
     console.error('DELETE /api/journal-entries/[id] error:', error)

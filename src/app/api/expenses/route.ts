@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { db } from '@/lib/db'
+import { getDb, toCamelCaseObj, toCamelCaseArr, toSnakeCaseObj } from '@/lib/db'
 import { requireAuth } from '@/lib/auth-guard'
 import { rateLimit } from '@/lib/rate-limit'
 import { expenseCreateSchema, expenseUpdateSchema, paginationSchema } from '@/lib/validations'
@@ -22,37 +22,40 @@ export async function GET(request: NextRequest) {
       limit: searchParams.get('limit') || '50',
     })
 
-    const where: Record<string, unknown> = { userId }
+    const supabase = getDb()
+
+    // Build query with filters
+    let query = supabase
+      .from('expenses')
+      .select('*', { count: 'exact' })
+      .eq('user_id', userId)
+      .order('date', { ascending: false })
+      .range((page - 1) * limit, (page - 1) * limit + limit - 1)
 
     if (category) {
-      where.category = category
+      query = query.eq('category', category)
     }
     if (month) {
-      const startDate = new Date(`${month}-01T00:00:00.000Z`)
+      const startDate = `${month}-01`
       const [year, mon] = month.split('-').map(Number)
-      const endDate = new Date(year, mon, 0, 23, 59, 59, 999)
-      where.date = {
-        gte: startDate,
-        lte: endDate,
-      }
+      const endDay = new Date(year, mon, 0).getDate()
+      const endDate = `${month}-${String(endDay).padStart(2, '0')}`
+      query = query.gte('date', startDate).lte('date', endDate)
     }
 
-    const [expenses, total] = await Promise.all([
-      db.expense.findMany({
-        where,
-        orderBy: { date: 'desc' },
-        skip: (page - 1) * limit,
-        take: limit,
-      }),
-      db.expense.count({ where }),
-    ])
+    const { data, count, error } = await query
 
-    const result = expenses.map((e) => ({
+    if (error) {
+      console.error('GET /api/expenses Supabase error:', error)
+      return NextResponse.json({ error: 'Failed to fetch expenses' }, { status: 500 })
+    }
+
+    const result = toCamelCaseArr(data as Record<string, unknown>[]).map((e: Record<string, unknown>) => ({
       ...e,
       amount: Number(e.amount),
     }))
 
-    return NextResponse.json({ data: result, total, page, limit })
+    return NextResponse.json({ data: result, total: count ?? 0, page, limit })
   } catch (error) {
     console.error('GET /api/expenses error:', error)
     return NextResponse.json({ error: 'Failed to fetch expenses' }, { status: 500 })
@@ -71,19 +74,30 @@ export async function POST(request: NextRequest) {
     const body = await request.json()
     const validated = expenseCreateSchema.parse(body)
 
-    const expense = await db.expense.create({
-      data: {
-        userId,
-        category: validated.category,
-        description: validated.description,
-        amount: validated.amount,
-        date: new Date(validated.date),
-        receiptUrl: validated.receiptUrl || undefined,
-        notes: validated.notes || undefined,
-      },
+    const supabase = getDb()
+    const insertData = toSnakeCaseObj({
+      userId,
+      category: validated.category,
+      description: validated.description,
+      amount: validated.amount,
+      date: validated.date,
+      receiptUrl: validated.receiptUrl || null,
+      notes: validated.notes || null,
     })
 
-    return NextResponse.json({ ...expense, amount: Number(expense.amount) }, { status: 201 })
+    const { data, error } = await supabase
+      .from('expenses')
+      .insert(insertData)
+      .select()
+      .single()
+
+    if (error) {
+      console.error('POST /api/expenses Supabase error:', error)
+      return NextResponse.json({ error: 'Failed to create expense' }, { status: 500 })
+    }
+
+    const result = toCamelCaseObj(data as Record<string, unknown>)
+    return NextResponse.json({ ...result, amount: Number(result.amount) }, { status: 201 })
   } catch (error) {
     if (error instanceof ZodError) {
       return NextResponse.json({ error: 'Validation failed', details: error.issues }, { status: 400 })
@@ -111,25 +125,45 @@ export async function PUT(request: NextRequest) {
 
     const validated = expenseUpdateSchema.parse(rest)
 
+    const supabase = getDb()
+
     // Verify ownership
-    const existing = await db.expense.findFirst({ where: { id, userId } })
-    if (!existing) {
+    const { data: existing, error: fetchError } = await supabase
+      .from('expenses')
+      .select('id')
+      .eq('id', id)
+      .eq('user_id', userId)
+      .single()
+
+    if (fetchError || !existing) {
       return NextResponse.json({ error: 'Expense not found' }, { status: 404 })
     }
 
-    const expense = await db.expense.update({
-      where: { id },
-      data: {
-        ...(validated.category && { category: validated.category }),
-        ...(validated.description && { description: validated.description }),
-        ...(validated.amount !== undefined && { amount: validated.amount }),
-        ...(validated.date && { date: new Date(validated.date) }),
-        ...(validated.receiptUrl !== undefined && { receiptUrl: validated.receiptUrl || null }),
-        ...(validated.notes !== undefined && { notes: validated.notes || null }),
-      },
-    })
+    // Build update data with only provided fields
+    const updateData: Record<string, unknown> = {}
+    if (validated.category) updateData.category = validated.category
+    if (validated.description) updateData.description = validated.description
+    if (validated.amount !== undefined) updateData.amount = validated.amount
+    if (validated.date) updateData.date = validated.date
+    if (validated.receiptUrl !== undefined) updateData.receiptUrl = validated.receiptUrl || null
+    if (validated.notes !== undefined) updateData.notes = validated.notes || null
 
-    return NextResponse.json({ ...expense, amount: Number(expense.amount) })
+    const snakeUpdateData = toSnakeCaseObj(updateData)
+
+    const { data, error } = await supabase
+      .from('expenses')
+      .update(snakeUpdateData)
+      .eq('id', id)
+      .select()
+      .single()
+
+    if (error) {
+      console.error('PUT /api/expenses Supabase error:', error)
+      return NextResponse.json({ error: 'Failed to update expense' }, { status: 500 })
+    }
+
+    const result = toCamelCaseObj(data as Record<string, unknown>)
+    return NextResponse.json({ ...result, amount: Number(result.amount) })
   } catch (error) {
     if (error instanceof ZodError) {
       return NextResponse.json({ error: 'Validation failed', details: error.issues }, { status: 400 })
@@ -155,15 +189,29 @@ export async function DELETE(request: NextRequest) {
       return NextResponse.json({ error: 'ID is required' }, { status: 400 })
     }
 
+    const supabase = getDb()
+
     // Verify ownership
-    const existing = await db.expense.findFirst({ where: { id, userId } })
-    if (!existing) {
+    const { data: existing, error: fetchError } = await supabase
+      .from('expenses')
+      .select('id')
+      .eq('id', id)
+      .eq('user_id', userId)
+      .single()
+
+    if (fetchError || !existing) {
       return NextResponse.json({ error: 'Expense not found' }, { status: 404 })
     }
 
-    await db.expense.delete({
-      where: { id },
-    })
+    const { error } = await supabase
+      .from('expenses')
+      .delete()
+      .eq('id', id)
+
+    if (error) {
+      console.error('DELETE /api/expenses Supabase error:', error)
+      return NextResponse.json({ error: 'Failed to delete expense' }, { status: 500 })
+    }
 
     return NextResponse.json({ success: true })
   } catch (error) {

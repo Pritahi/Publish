@@ -14,6 +14,7 @@ import {
   BookOpen,
   Settings as SettingsIcon,
   Bell,
+  Mail,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from '@/components/ui/sheet'
@@ -31,6 +32,7 @@ const navItems = [
   { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
   { id: 'clients', label: 'Clients', icon: Users },
   { id: 'signings', label: 'Signings', icon: Calendar },
+  { id: 'email-parsing', label: 'Email Parsing', icon: Mail },
   { id: 'invoices', label: 'Invoices', icon: FileText },
   { id: 'expenses', label: 'Expenses', icon: Receipt },
   { id: 'ejournal', label: 'E-Journal', icon: BookOpen },

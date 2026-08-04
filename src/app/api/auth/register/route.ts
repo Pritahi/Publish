@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { db } from '@/lib/db'
+import { getDb, toCamelCaseObj, toSnakeCaseObj } from '@/lib/db'
 import { hash } from 'bcryptjs'
 import { z } from 'zod'
 import { rateLimit } from '@/lib/rate-limit'
@@ -18,11 +18,17 @@ export async function POST(request: NextRequest) {
     const body = await request.json()
     const { name, email, password } = registerSchema.parse(body)
 
-    // Check if user already exists
-    const existingUser = await db.user.findUnique({
-      where: { email },
-    })
+    const db = getDb()
 
+    // Check if user already exists
+    const { data: existingUser } = await db
+      .from('users')
+      .select('*')
+      .eq('email', email)
+      .single()
+
+    // If existingUser is found, the email is already registered
+    // (PGRST116 = no rows returned, which means not found — that's the good case)
     if (existingUser) {
       return NextResponse.json(
         { error: 'An account with this email already exists' },
@@ -33,23 +39,30 @@ export async function POST(request: NextRequest) {
     // Hash password and create user
     const passwordHash = await hash(password, 12)
 
-    const user = await db.user.create({
-      data: {
-        name,
-        email,
-        passwordHash,
-      },
-      select: {
-        id: true,
-        name: true,
-        email: true,
-        role: true,
-        createdAt: true,
-      },
+    const insertData = toSnakeCaseObj({
+      name,
+      email,
+      passwordHash,
     })
 
+    const { data: user, error: insertError } = await db
+      .from('users')
+      .insert(insertData)
+      .select('id, name, email, role, created_at')
+      .single()
+
+    if (insertError) {
+      console.error('Supabase user insert error:', insertError)
+      return NextResponse.json(
+        { error: 'Failed to create account' },
+        { status: 500 }
+      )
+    }
+
+    const userCamel = toCamelCaseObj(user as Record<string, unknown>)
+
     return NextResponse.json(
-      { message: 'Account created successfully', user },
+      { message: 'Account created successfully', user: userCamel },
       { status: 201 }
     )
   } catch (error) {

@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { db } from '@/lib/db'
+import { getDb, toSnakeCaseObj } from '@/lib/db'
 import { requireAuth } from '@/lib/auth-guard'
 import { backupDataSchema } from '@/lib/validations'
 import { ZodError } from 'zod'
@@ -20,32 +20,39 @@ export async function POST(request: NextRequest) {
     const body = await request.json()
     const validated = backupDataSchema.parse(body)
 
-    // Delete existing data for this user
-    await db.invoice.deleteMany({ where: { userId } })
-    await db.signing.deleteMany({ where: { userId } })
-    await db.expense.deleteMany({ where: { userId } })
-    await db.client.deleteMany({ where: { userId } })
+    const db = getDb()
 
-    // Restore clients
+    // ── Delete existing data for this user (in dependency order) ──
+    await db.from('invoices').delete().eq('user_id', userId)
+    await db.from('signings').delete().eq('user_id', userId)
+    await db.from('expenses').delete().eq('user_id', userId)
+    await db.from('clients').delete().eq('user_id', userId)
+
+    // ── Restore clients one by one (need to map old IDs to new IDs) ──
     const clientIdMap: Record<string, string> = {}
     for (const client of validated.clients) {
       const c = client as Record<string, unknown>
       const oldId = c.id as string
-      const newClient = await db.client.create({
-        data: {
-          userId,
-          name: (c.name as string) || 'Unknown',
-          email: (c.email as string) || null,
-          phone: (c.phone as string) || null,
-          company: (c.company as string) || null,
-          address: (c.address as string) || null,
-          notes: (c.notes as string) || null,
-        },
+
+      const insertData = toSnakeCaseObj({
+        userId,
+        name: (c.name as string) || 'Unknown',
+        email: (c.email as string) || null,
+        phone: (c.phone as string) || null,
+        company: (c.company as string) || null,
+        address: (c.address as string) || null,
+        notes: (c.notes as string) || null,
       })
-      clientIdMap[oldId] = newClient.id
+
+      const res = await db.from('clients').insert(insertData).select('id').single()
+      if (res.error || !res.data) {
+        console.error('Restore: client insert error:', res.error)
+        continue
+      }
+      clientIdMap[oldId] = (res.data as Record<string, unknown>).id as string
     }
 
-    // Restore signings
+    // ── Restore signings with mapped client IDs ──
     const signingIdMap: Record<string, string> = {}
     for (const signing of validated.signings) {
       const s = signing as Record<string, unknown>
@@ -54,24 +61,28 @@ export async function POST(request: NextRequest) {
       const newClientId = clientIdMap[oldClientId]
       if (!newClientId) continue
 
-      const newSigning = await db.signing.create({
-        data: {
-          userId,
-          clientId: newClientId,
-          date: s.date ? new Date(s.date as string) : new Date(),
-          time: (s.time as string) || null,
-          location: (s.location as string) || 'Unknown',
-          serviceType: (s.serviceType as string) || 'General Notary',
-          fee: Number(s.fee ?? 0),
-          status: (s.status as string) || 'Scheduled',
-          notes: (s.notes as string) || null,
-          mileage: s.mileage != null ? Number(s.mileage) : null,
-        },
+      const insertData = toSnakeCaseObj({
+        userId,
+        clientId: newClientId,
+        date: s.date ? new Date(s.date as string).toISOString() : new Date().toISOString(),
+        time: (s.time as string) || null,
+        location: (s.location as string) || 'Unknown',
+        serviceType: (s.serviceType as string) || 'General Notary',
+        fee: Number(s.fee ?? 0),
+        status: (s.status as string) || 'Scheduled',
+        notes: (s.notes as string) || null,
+        mileage: s.mileage != null ? Number(s.mileage) : null,
       })
-      signingIdMap[oldId] = newSigning.id
+
+      const res = await db.from('signings').insert(insertData).select('id').single()
+      if (res.error || !res.data) {
+        console.error('Restore: signing insert error:', res.error)
+        continue
+      }
+      signingIdMap[oldId] = (res.data as Record<string, unknown>).id as string
     }
 
-    // Restore invoices
+    // ── Restore invoices with mapped client/signing IDs ──
     let invoiceCount = 0
     for (const invoice of validated.invoices) {
       const inv = invoice as Record<string, unknown>
@@ -82,40 +93,58 @@ export async function POST(request: NextRequest) {
       const oldSigningId = inv.signingId as string | undefined
       const newSigningId = oldSigningId ? signingIdMap[oldSigningId] : undefined
 
-      // Generate a new invoice number to avoid conflicts
+      // Generate a new invoice number — try RPC first, fall back to counter
       invoiceCount++
-      const invoiceNo = `INV-${String(invoiceCount).padStart(4, '0')}`
+      let invoiceNo = `INV-${String(invoiceCount).padStart(4, '0')}`
 
-      await db.invoice.create({
-        data: {
-          userId,
-          invoiceNo,
-          clientId: newClientId,
-          signingId: newSigningId || undefined,
-          amount: Number(inv.amount ?? 0),
-          status: (inv.status as string) || 'Unpaid',
-          issuedDate: inv.issuedDate ? new Date(inv.issuedDate as string) : new Date(),
-          dueDate: inv.dueDate ? new Date(inv.dueDate as string) : null,
-          paidDate: inv.paidDate ? new Date(inv.paidDate as string) : null,
-          notes: (inv.notes as string) || null,
-        },
+      try {
+        const rpcRes = await db.rpc('get_next_invoice_no', { p_user_id: userId })
+        if (!rpcRes.error && rpcRes.data) {
+          invoiceNo = String(rpcRes.data)
+        }
+      } catch {
+        // RPC not available — use the counter-based invoice number
+      }
+
+      const insertData = toSnakeCaseObj({
+        userId,
+        invoiceNo,
+        clientId: newClientId,
+        signingId: newSigningId || null,
+        amount: Number(inv.amount ?? 0),
+        status: (inv.status as string) || 'Unpaid',
+        issuedDate: inv.issuedDate ? new Date(inv.issuedDate as string).toISOString() : new Date().toISOString(),
+        dueDate: inv.dueDate ? new Date(inv.dueDate as string).toISOString() : null,
+        paidDate: inv.paidDate ? new Date(inv.paidDate as string).toISOString() : null,
+        notes: (inv.notes as string) || null,
       })
+
+      const res = await db.from('invoices').insert(insertData).select('id').single()
+      if (res.error) {
+        console.error('Restore: invoice insert error:', res.error)
+        continue
+      }
     }
 
-    // Restore expenses
+    // ── Restore expenses ──
     for (const expense of validated.expenses) {
       const e = expense as Record<string, unknown>
-      await db.expense.create({
-        data: {
-          userId,
-          category: (e.category as string) || 'Miscellaneous',
-          description: (e.description as string) || 'Imported expense',
-          amount: Number(e.amount ?? 0),
-          date: e.date ? new Date(e.date as string) : new Date(),
-          receiptUrl: (e.receiptUrl as string) || null,
-          notes: (e.notes as string) || null,
-        },
+
+      const insertData = toSnakeCaseObj({
+        userId,
+        category: (e.category as string) || 'Miscellaneous',
+        description: (e.description as string) || 'Imported expense',
+        amount: Number(e.amount ?? 0),
+        date: e.date ? new Date(e.date as string).toISOString() : new Date().toISOString(),
+        receiptUrl: (e.receiptUrl as string) || null,
+        notes: (e.notes as string) || null,
       })
+
+      const res = await db.from('expenses').insert(insertData).select('id').single()
+      if (res.error) {
+        console.error('Restore: expense insert error:', res.error)
+        continue
+      }
     }
 
     return NextResponse.json({

@@ -1,9 +1,26 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { db } from '@/lib/db'
+import { getDb, toCamelCaseObj } from '@/lib/db'
 import { requireAuth } from '@/lib/auth-guard'
 import { rateLimit } from '@/lib/rate-limit'
 import { invoiceUpdateSchema } from '@/lib/validations'
 import { ZodError } from 'zod'
+
+/** Map a Supabase invoice row (snake_case + `clients`/`signings` joins) to camelCase frontend shape */
+function mapInvoiceRow(row: Record<string, unknown>) {
+  const { clients, signings, ...rest } = row
+  const camel = toCamelCaseObj(rest)
+  return {
+    ...camel,
+    amount: Number(camel.amount),
+    client: clients ? toCamelCaseObj(clients as Record<string, unknown>) : null,
+    signing: signings
+      ? {
+          ...toCamelCaseObj(signings as Record<string, unknown>),
+          fee: Number((signings as Record<string, unknown>).fee),
+        }
+      : null,
+  }
+}
 
 // GET /api/invoices/[id]
 export async function GET(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
@@ -16,21 +33,20 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     const { userId } = authResult
 
     const { id } = await params
-    const invoice = await db.invoice.findFirst({
-      where: { id, userId },
-      include: {
-        client: { select: { id: true, name: true, email: true, phone: true } },
-        signing: { select: { id: true, serviceType: true, date: true, fee: true } },
-      },
-    })
-    if (!invoice) {
+    const db = getDb()
+
+    const { data, error } = await db
+      .from('invoices')
+      .select('*, clients(id, name, email, phone), signings(id, service_type, date, fee)')
+      .eq('id', id)
+      .eq('user_id', userId)
+      .single()
+
+    if (error || !data) {
       return NextResponse.json({ error: 'Invoice not found' }, { status: 404 })
     }
-    return NextResponse.json({
-      ...invoice,
-      amount: Number(invoice.amount),
-      signing: invoice.signing ? { ...invoice.signing, fee: Number(invoice.signing.fee) } : invoice.signing,
-    })
+
+    return NextResponse.json(mapInvoiceRow(data as Record<string, unknown>))
   } catch (error) {
     console.error('GET /api/invoices/[id] error:', error)
     return NextResponse.json({ error: 'Failed to fetch invoice' }, { status: 500 })
@@ -51,34 +67,47 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
     const body = await request.json()
     const validated = invoiceUpdateSchema.parse(body)
 
+    const db = getDb()
+
     // Verify ownership
-    const existing = await db.invoice.findFirst({ where: { id, userId } })
-    if (!existing) {
+    const { data: existing, error: fetchError } = await db
+      .from('invoices')
+      .select('id')
+      .eq('id', id)
+      .eq('user_id', userId)
+      .single()
+
+    if (fetchError || !existing) {
       return NextResponse.json({ error: 'Invoice not found' }, { status: 404 })
     }
 
-    const data: Record<string, unknown> = {}
-    if (validated.clientId) data.clientId = validated.clientId
-    if (validated.signingId !== undefined) data.signingId = validated.signingId || null
-    if (validated.amount !== undefined) data.amount = validated.amount
+    // Build update data with snake_case keys
+    const updateData: Record<string, unknown> = {}
+    if (validated.clientId) updateData.client_id = validated.clientId
+    if (validated.signingId !== undefined) updateData.signing_id = validated.signingId || null
+    if (validated.amount !== undefined) updateData.amount = validated.amount
     if (validated.status) {
-      data.status = validated.status
+      updateData.status = validated.status
       if (validated.status === 'Paid') {
-        data.paidDate = new Date()
+        updateData.paid_date = new Date().toISOString()
       }
     }
-    if (validated.dueDate !== undefined) data.dueDate = validated.dueDate ? new Date(validated.dueDate) : null
-    if (validated.notes !== undefined) data.notes = validated.notes || null
+    if (validated.dueDate !== undefined) updateData.due_date = validated.dueDate || null
+    if (validated.notes !== undefined) updateData.notes = validated.notes || null
 
-    const invoice = await db.invoice.update({
-      where: { id },
-      data,
-      include: {
-        client: { select: { id: true, name: true } },
-      },
-    })
+    const { data: invoice, error: updateError } = await db
+      .from('invoices')
+      .update(updateData)
+      .eq('id', id)
+      .select('*, clients(id, name), signings(id, service_type, date, fee)')
+      .single()
 
-    return NextResponse.json({ ...invoice, amount: Number(invoice.amount) })
+    if (updateError || !invoice) {
+      console.error('Supabase PUT invoice error:', updateError)
+      return NextResponse.json({ error: 'Failed to update invoice' }, { status: 500 })
+    }
+
+    return NextResponse.json(mapInvoiceRow(invoice as Record<string, unknown>))
   } catch (error) {
     if (error instanceof ZodError) {
       return NextResponse.json({ error: 'Validation failed', details: error.issues }, { status: 400 })
@@ -99,14 +128,30 @@ export async function DELETE(request: NextRequest, { params }: { params: Promise
     const { userId } = authResult
 
     const { id } = await params
+    const db = getDb()
 
     // Verify ownership
-    const existing = await db.invoice.findFirst({ where: { id, userId } })
-    if (!existing) {
+    const { data: existing, error: fetchError } = await db
+      .from('invoices')
+      .select('id')
+      .eq('id', id)
+      .eq('user_id', userId)
+      .single()
+
+    if (fetchError || !existing) {
       return NextResponse.json({ error: 'Invoice not found' }, { status: 404 })
     }
 
-    await db.invoice.delete({ where: { id } })
+    const { error: deleteError } = await db
+      .from('invoices')
+      .delete()
+      .eq('id', id)
+
+    if (deleteError) {
+      console.error('Supabase DELETE invoice error:', deleteError)
+      return NextResponse.json({ error: 'Failed to delete invoice' }, { status: 500 })
+    }
+
     return NextResponse.json({ success: true })
   } catch (error) {
     console.error('DELETE /api/invoices/[id] error:', error)
