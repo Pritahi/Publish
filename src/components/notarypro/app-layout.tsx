@@ -1,6 +1,7 @@
 'use client'
 
 import React, { useState } from 'react'
+import { usePathname, useRouter } from 'next/navigation'
 import { cn } from '@/lib/utils'
 import {
   LayoutDashboard,
@@ -23,8 +24,6 @@ import { Separator } from '@/components/ui/separator'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
 
 interface AppLayoutProps {
-  activePage: string
-  setActivePage: (page: string) => void
   children: React.ReactNode
 }
 
@@ -117,8 +116,19 @@ function SidebarNav({
   )
 }
 
-export function AppLayout({ activePage, setActivePage, children }: AppLayoutProps) {
+export function AppLayout({ children }: AppLayoutProps) {
   const [mobileOpen, setMobileOpen] = useState(false)
+  const router = useRouter()
+  const pathname = usePathname()
+
+  // Derive activePage from URL pathname
+  // '/' -> 'dashboard', '/clients' -> 'clients', '/email-parsing' -> 'email-parsing'
+  const activePage = pathname === '/' ? 'dashboard' : pathname.slice(1)
+
+  // Map setActivePage to URL navigation
+  const setActivePage = (page: string) => {
+    router.push(page === 'dashboard' ? '/' : `/${page}`)
+  }
 
   return (
     <TooltipProvider delayDuration={0}>
