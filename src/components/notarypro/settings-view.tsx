@@ -26,8 +26,11 @@ import {
   ChevronUp,
   Bell,
   Shield,
+  HelpCircle,
+  PlayCircle,
 } from 'lucide-react'
 import { DataBackup } from './data-backup'
+import { replayOnboarding } from './onboarding-modal'
 import { toast } from 'sonner'
 import {
   type NotificationPreferences,
@@ -580,6 +583,48 @@ export default function SettingsView() {
         </CardHeader>
         <CardContent>
           <DataBackup />
+        </CardContent>
+      </Card>
+
+      {/* Help & Onboarding */}
+      <Card className="border-slate-200/60">
+        <CardHeader>
+          <CardTitle className="text-base font-semibold text-slate-900 flex items-center gap-2">
+            <HelpCircle className="h-4 w-4 text-blue-600" />
+            Help & Onboarding
+          </CardTitle>
+          <CardDescription>
+            New to NotaryPro? Replay the 2-minute tour, or open the full page-by-page guide.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="flex flex-wrap gap-2">
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => {
+                toast.success('Replaying onboarding tour…')
+                replayOnboarding()
+              }}
+            >
+              <PlayCircle className="h-4 w-4 mr-1.5" />
+              Replay Onboarding Tour
+            </Button>
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => {
+                window.location.href = '/guide'
+              }}
+            >
+              <HelpCircle className="h-4 w-4 mr-1.5" />
+              Open Full Guide
+            </Button>
+          </div>
+          <p className="text-xs text-slate-500 mt-3 leading-relaxed">
+            The onboarding tour walks you through every page in 2 minutes. The full guide explains
+            what each page does, when to use it, key features, and pro tips.
+          </p>
         </CardContent>
       </Card>
 

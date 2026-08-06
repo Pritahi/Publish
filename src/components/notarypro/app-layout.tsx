@@ -16,27 +16,80 @@ import {
   Settings as SettingsIcon,
   Bell,
   Mail,
+  HelpCircle,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from '@/components/ui/sheet'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { Separator } from '@/components/ui/separator'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
+import { OnboardingModal } from './onboarding-modal'
 
 interface AppLayoutProps {
   children: React.ReactNode
 }
 
 const navItems = [
-  { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
-  { id: 'clients', label: 'Clients', icon: Users },
-  { id: 'signings', label: 'Signings', icon: Calendar },
-  { id: 'email-parsing', label: 'Email Parsing', icon: Mail },
-  { id: 'invoices', label: 'Invoices', icon: FileText },
-  { id: 'expenses', label: 'Expenses', icon: Receipt },
-  { id: 'ejournal', label: 'E-Journal', icon: BookOpen },
-  { id: 'reports', label: 'Reports', icon: BarChart3 },
-  { id: 'settings', label: 'Settings', icon: SettingsIcon },
+  {
+    id: 'dashboard',
+    label: 'Dashboard',
+    icon: LayoutDashboard,
+    description: 'Overview — KPIs, upcoming signings, recent activity, and quick actions.',
+  },
+  {
+    id: 'clients',
+    label: 'Clients',
+    icon: Users,
+    description: 'Manage your client database — borrowers, signing services, title companies.',
+  },
+  {
+    id: 'signings',
+    label: 'Signings',
+    icon: Calendar,
+    description: 'Schedule and track notary appointments with status workflow.',
+  },
+  {
+    id: 'email-parsing',
+    label: 'Email Parsing',
+    icon: Mail,
+    description: 'Connect Gmail to auto-detect signing requests from signing services.',
+  },
+  {
+    id: 'invoices',
+    label: 'Invoices',
+    icon: FileText,
+    description: 'Create invoices, track payment status, and generate PDFs.',
+  },
+  {
+    id: 'expenses',
+    label: 'Expenses',
+    icon: Receipt,
+    description: 'Track business expenses — mileage, supplies, software, travel.',
+  },
+  {
+    id: 'ejournal',
+    label: 'E-Journal',
+    icon: BookOpen,
+    description: 'Digital notary journal with signature capture for state compliance.',
+  },
+  {
+    id: 'reports',
+    label: 'Reports',
+    icon: BarChart3,
+    description: 'Analytics — revenue, expenses, top clients, signing type distribution.',
+  },
+  {
+    id: 'settings',
+    label: 'Settings',
+    icon: SettingsIcon,
+    description: 'Telegram alerts, email connections, data backup, and business profile.',
+  },
+  {
+    id: 'guide',
+    label: 'Guide & Help',
+    icon: HelpCircle,
+    description: 'Full page-by-page guide, FAQs, and replay onboarding tour.',
+  },
 ]
 
 function NotificationBell({ onClick }: { onClick: () => void }) {
@@ -88,20 +141,23 @@ function SidebarNav({
   setActivePage: (page: string) => void
   onNavigate?: () => void
 }) {
-  return (
-    <nav className="flex flex-col gap-1 px-3 py-2">
-      {navItems.map((item) => {
-        const Icon = item.icon
-        const isActive = activePage === item.id
-        return (
+  // Separate main nav from Guide (Guide goes at the bottom)
+  const mainItems = navItems.filter((i) => i.id !== 'guide')
+  const guideItem = navItems.find((i) => i.id === 'guide')!
+
+  const renderNavButton = (item: typeof navItems[number]) => {
+    const Icon = item.icon
+    const isActive = activePage === item.id
+    return (
+      <Tooltip key={item.id}>
+        <TooltipTrigger asChild>
           <button
-            key={item.id}
             onClick={() => {
               setActivePage(item.id)
               onNavigate?.()
             }}
             className={cn(
-              'flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-all duration-150',
+              'flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-all duration-150 w-full',
               isActive
                 ? 'bg-emerald-600 text-white shadow-md shadow-emerald-600/25'
                 : 'text-slate-300 hover:bg-slate-800 hover:text-white'
@@ -110,8 +166,20 @@ function SidebarNav({
             <Icon className="h-5 w-5 shrink-0" />
             <span>{item.label}</span>
           </button>
-        )
-      })}
+        </TooltipTrigger>
+        <TooltipContent side="right" className="max-w-xs text-xs">
+          <p className="font-semibold mb-0.5">{item.label}</p>
+          <p className="text-slate-300 font-normal leading-relaxed">{item.description}</p>
+        </TooltipContent>
+      </Tooltip>
+    )
+  }
+
+  return (
+    <nav className="flex flex-col gap-1 px-3 py-2">
+      {mainItems.map(renderNavButton)}
+      <div className="my-2 border-t border-slate-800" />
+      {renderNavButton(guideItem)}
     </nav>
   )
 }
@@ -132,6 +200,7 @@ export function AppLayout({ children }: AppLayoutProps) {
 
   return (
     <TooltipProvider delayDuration={0}>
+      <OnboardingModal />
       <div className="flex h-screen overflow-hidden bg-slate-50">
         {/* Desktop Sidebar */}
         <aside className="hidden lg:flex lg:w-[260px] lg:flex-col lg:fixed lg:inset-y-0 bg-slate-900 text-white z-30">
