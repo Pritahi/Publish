@@ -4,23 +4,28 @@ export default withAuth({
   pages: {
     signIn: '/login',
   },
+  // Only redirect to /login when an auth-protected path is hit AND there
+  // is no session. Public paths (landing, guide, login) are allowed
+  // through without a session.
+  callbacks: {
+    authorized: ({ token, path }) => {
+      // Public paths that never require auth
+      const publicPaths = ['/', '/guide', '/login']
+      if (publicPaths.includes(path)) {
+        return true
+      }
+      // Everything else requires a session token
+      return !!token
+    },
+  },
 })
 
 export const config = {
   matcher: [
     /*
-     * Protect the main app route. Unauthenticated users
-     * are redirected to /login. API routes are protected
-     * with getServerSession() checks per-route.
-     *
-     * Excluded paths:
-     * - /login (auth page)
-     * - /api/auth (NextAuth routes)
-     * - /api/health (health check)
-     * - /api/auth/register (registration endpoint)
-     * - _next/static, _next/image (Next.js internals)
-     * - favicon.ico, logo.svg, robots.txt (public assets)
+     * Match all paths except Next.js internals, public static assets,
+     * and auth/health API routes (which handle their own auth).
      */
-    '/((?!login|api/auth|api/health|_next/static|_next/image|favicon.ico|logo.svg|robots.txt).*)',
+    '/((?!api/auth|api/health|_next/static|_next/image|favicon.ico|logo.svg|robots.txt).*)',
   ],
 }
