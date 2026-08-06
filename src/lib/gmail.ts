@@ -60,7 +60,17 @@ export function getGmailClient(accessToken: string, refreshToken: string): OAuth
 }
 
 /**
- * Fetch unread emails from inbox
+ * Fetch unread emails from inbox.
+ *
+ * We deliberately fetch from INBOX (not PROMOTIONS/SOCIAL) and exclude
+ * common newsletter categories so the parser doesn't waste effort on
+ * daily.dev digests, GitHub notifications, etc.
+ *
+ * The Gmail `q` parameter uses Gmail search syntax. We:
+ *   - include `is:unread` (only unread)
+ *   - exclude category:promotions, category:social, category:updates,
+ *     category:forums, category:reservations
+ *   - exclude common newsletter from: addresses
  */
 export async function fetchUnreadEmails(
   accessToken: string,
@@ -70,10 +80,31 @@ export async function fetchUnreadEmails(
   const auth = getGmailClient(accessToken, refreshToken)
   const gmail = google.gmail({ version: 'v1', auth })
 
+  // Build a Gmail search query that excludes obvious newsletters / marketing / social.
+  // We still keep the INBOX label so genuine signing emails from title companies
+  // (which usually land in the primary inbox) are captured.
+  const query = [
+    'is:unread',
+    'in:inbox',
+    '-category:promotions',
+    '-category:social',
+    '-category:forums',
+    '-category:reservations',
+    // Exclude common newsletter senders
+    '-from:newsletter@',
+    '-from:no-reply@',
+    '-from:noreply@',
+    '-from:daily.dev',
+    '-from:github.com',
+    '-from:linkedin.com',
+    '-from:notifications@',
+    '-from:updates@',
+  ].join(' ')
+
   const listRes = await gmail.users.messages.list({
     userId: 'me',
     labelIds: ['INBOX'],
-    q: 'is:unread',
+    q: query,
     maxResults,
   })
 

@@ -102,11 +102,20 @@ export async function POST(request: NextRequest) {
       const parsedResults = []
 
       for (const email of emails) {
-        // Parse the email
+        // Parse the email (strict — returns source='unknown' with null fields
+        // for emails that don't look like notary signings)
         const parsed = parseSigningEmail(email.from, email.subject, email.body)
 
-        if (!parsed.clientName && !parsed.signingDate) {
-          continue // Not a signing-related email
+        // Skip emails that the parser classified as "not a signing".
+        // `source === 'unknown'` means it was either blocklisted or failed
+        // the strong-signal threshold.
+        if (parsed.source === 'unknown') {
+          continue
+        }
+
+        // Defensive double-check: require at least one extracted field
+        if (!parsed.clientName && !parsed.signingDate && !parsed.fee) {
+          continue
         }
 
         // Check if we already parsed this email
