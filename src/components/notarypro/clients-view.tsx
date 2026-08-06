@@ -111,8 +111,10 @@ export default function ClientsView() {
     try {
       const res = await fetch('/api/clients')
       if (res.ok) {
-        const data = await res.json()
-        setClients(data)
+        const json = await res.json()
+        // API returns { data: [...], total, page, limit } — extract the array
+        const arr = Array.isArray(json) ? json : (json?.data ?? [])
+        setClients(arr)
       } else {
         // Demo data
         setClients([

@@ -115,7 +115,10 @@ export default function ExpensesView() {
       if (monthFilter) params.set('month', monthFilter)
       const res = await fetch(`/api/expenses?${params}`)
       if (res.ok) {
-        setExpenses(await res.json())
+        const json = await res.json()
+        // API returns { data: [...], total, page, limit } — extract the array
+        const arr = Array.isArray(json) ? json : (json?.data ?? [])
+        setExpenses(arr)
       } else {
         setExpenses([
           { id: '1', category: 'Gas', description: 'Monthly gas for signings', amount: 185.50, date: '2025-01-05', notes: '' },

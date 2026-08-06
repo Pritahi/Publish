@@ -145,7 +145,10 @@ export default function SigningsView() {
       if (monthFilter) params.set('month', monthFilter)
       const res = await fetch(`/api/signings?${params}`)
       if (res.ok) {
-        setSignings(await res.json())
+        const json = await res.json()
+        // API returns { data: [...], total, page, limit } — extract the array
+        const arr = Array.isArray(json) ? json : (json?.data ?? [])
+        setSignings(arr)
       } else {
         // Demo data
         setSignings([
@@ -178,8 +181,10 @@ export default function SigningsView() {
     try {
       const res = await fetch('/api/clients')
       if (res.ok) {
-        const data = await res.json()
-        setClients(data.map((c: any) => ({ id: c.id, name: c.name })))
+        const json = await res.json()
+        // API returns { data: [...], total, page, limit } — extract the array
+        const arr = Array.isArray(json) ? json : (json?.data ?? [])
+        setClients(arr.map((c: any) => ({ id: c.id, name: c.name })))
         return
       }
     } catch {}

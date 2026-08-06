@@ -110,7 +110,10 @@ export default function InvoicesView() {
       if (statusFilter !== 'All') params.set('status', statusFilter)
       const res = await fetch(`/api/invoices?${params}`)
       if (res.ok) {
-        setInvoices(await res.json())
+        const json = await res.json()
+        // API returns { data: [...], total, page, limit } — extract the array
+        const arr = Array.isArray(json) ? json : (json?.data ?? [])
+        setInvoices(arr)
       } else {
         setInvoices([
           { id: '1', invoiceNo: 'INV-001', clientId: '1', clientName: 'John Smith', amount: 175, status: 'Paid', issuedDate: '2024-12-01', dueDate: '2024-12-31' },
@@ -140,8 +143,10 @@ export default function InvoicesView() {
     try {
       const res = await fetch('/api/clients')
       if (res.ok) {
-        const data = await res.json()
-        setClients(data.map((c: any) => ({ id: c.id, name: c.name })))
+        const json = await res.json()
+        // API returns { data: [...], total, page, limit } — extract the array
+        const arr = Array.isArray(json) ? json : (json?.data ?? [])
+        setClients(arr.map((c: any) => ({ id: c.id, name: c.name })))
         return
       }
     } catch {}
