@@ -29,12 +29,24 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu'
+import {
   Plus,
   FileText,
   DollarSign,
   AlertTriangle,
   CheckCircle,
   Clock,
+  MoreVertical,
+  RotateCcw,
+  ArrowRightCircle,
+  XCircle,
 } from 'lucide-react'
 import { toast } from 'sonner'
 import { sendTelegramNotification } from '@/lib/telegram'
@@ -237,6 +249,50 @@ export default function InvoicesView() {
     }
   }
 
+  // Generic status change — supports reverting Paid → Unpaid/Overdue, or any
+  // other transition. Used by the row-level dropdown menu.
+  const handleStatusChange = async (invoice: Invoice, newStatus: string) => {
+    if (newStatus === invoice.status) return // No-op
+
+    const prevStatus = invoice.status
+    // Optimistic update for instant UI feedback
+    setInvoices((prev) => prev.map((i) => (i.id === invoice.id ? { ...i, status: newStatus } : i)))
+
+    try {
+      const res = await fetch(`/api/invoices/${invoice.id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status: newStatus }),
+      })
+      if (res.ok) {
+        if (newStatus === 'Paid') {
+          toast.success(`Invoice ${invoice.invoiceNo} marked as Paid`)
+          sendTelegramNotification({
+            type: 'invoice_paid',
+            data: { clientName: invoice.clientName, invoiceNo: invoice.invoiceNo, amount: invoice.amount },
+          })
+        } else if (prevStatus === 'Paid') {
+          toast.info(`Invoice ${invoice.invoiceNo} reverted to ${newStatus}`)
+        } else {
+          toast.success(`Invoice ${invoice.invoiceNo} status changed to ${newStatus}`)
+        }
+      } else {
+        // Revert optimistic update on failure
+        setInvoices((prev) => prev.map((i) => (i.id === invoice.id ? { ...i, status: prevStatus } : i)))
+        toast.error('Failed to update status')
+      }
+    } catch {
+      // Network error — keep optimistic update (offline-friendly)
+      if (newStatus === 'Paid') {
+        toast.success(`Invoice ${invoice.invoiceNo} marked as paid`)
+      } else if (prevStatus === 'Paid') {
+        toast.info(`Invoice ${invoice.invoiceNo} reverted to ${newStatus}`)
+      } else {
+        toast.success(`Invoice ${invoice.invoiceNo} status changed to ${newStatus}`)
+      }
+    }
+  }
+
   const summaryCards = [
     { label: 'Total Invoiced', value: formatCurrency(totalInvoiced), icon: DollarSign, color: 'text-slate-600', bg: 'bg-slate-50' },
     { label: 'Paid', value: formatCurrency(totalPaid), icon: CheckCircle, color: 'text-emerald-600', bg: 'bg-emerald-50' },
@@ -356,6 +412,62 @@ export default function InvoicesView() {
                               <span className="hidden sm:inline">Mark Paid</span>
                             </Button>
                           )}
+                          <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                className="h-7 w-7 p-0 text-slate-500 hover:text-slate-700"
+                                aria-label="Change status"
+                              >
+                                <MoreVertical className="h-4 w-4" />
+                              </Button>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent align="end" className="w-48">
+                              <DropdownMenuLabel className="text-xs">
+                                Change Status
+                              </DropdownMenuLabel>
+                              <DropdownMenuSeparator />
+                              <DropdownMenuItem
+                                onClick={() => handleStatusChange(invoice, 'Paid')}
+                                disabled={invoice.status === 'Paid'}
+                                className="text-xs cursor-pointer"
+                              >
+                                <CheckCircle className="h-3.5 w-3.5 mr-2 text-emerald-600" />
+                                Mark as Paid
+                              </DropdownMenuItem>
+                              <DropdownMenuItem
+                                onClick={() => handleStatusChange(invoice, 'Unpaid')}
+                                disabled={invoice.status === 'Unpaid'}
+                                className="text-xs cursor-pointer"
+                              >
+                                {invoice.status === 'Paid' ? (
+                                  <RotateCcw className="h-3.5 w-3.5 mr-2 text-amber-600" />
+                                ) : (
+                                  <Clock className="h-3.5 w-3.5 mr-2 text-amber-600" />
+                                )}
+                                {invoice.status === 'Paid' ? 'Revert to Unpaid' : 'Mark as Unpaid'}
+                              </DropdownMenuItem>
+                              <DropdownMenuItem
+                                onClick={() => handleStatusChange(invoice, 'Overdue')}
+                                disabled={invoice.status === 'Overdue'}
+                                className="text-xs cursor-pointer"
+                              >
+                                <AlertTriangle className="h-3.5 w-3.5 mr-2 text-red-600" />
+                                {invoice.status === 'Paid' ? 'Revert to Overdue' : 'Mark as Overdue'}
+                              </DropdownMenuItem>
+                              {invoice.status !== 'Unpaid' && invoice.status !== 'Overdue' && (
+                                <>
+                                  <DropdownMenuSeparator />
+                                  <div className="px-2 py-1.5">
+                                    <p className="text-[10px] text-slate-500 leading-relaxed">
+                                      Accidentally marked Paid? Revert it here — paid_date will be cleared automatically.
+                                    </p>
+                                  </div>
+                                </>
+                              )}
+                            </DropdownMenuContent>
+                          </DropdownMenu>
                         </div>
                       </td>
                     </tr>

@@ -90,6 +90,9 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
       updateData.status = validated.status
       if (validated.status === 'Paid') {
         updateData.paid_date = new Date().toISOString()
+      } else {
+        // Status changed away from Paid — clear paid_date so reports stay accurate
+        updateData.paid_date = null
       }
     }
     if (validated.dueDate !== undefined) updateData.due_date = validated.dueDate || null
