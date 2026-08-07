@@ -1,8 +1,8 @@
 'use client'
 
-import { signIn } from 'next-auth/react'
-import { useRouter } from 'next/navigation'
-import { useState } from 'react'
+import { signIn, useSession } from 'next-auth/react'
+import { useRouter, useSearchParams } from 'next/navigation'
+import { Suspense, useEffect, useState } from 'react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -53,11 +53,43 @@ function toFriendlyError(raw: string | undefined | null): string {
 }
 
 export default function LoginPage() {
+  // Wrap in Suspense because we use useSearchParams() below to clean up
+  // any stale ?error=... params from the browser URL. Next.js 16 requires
+  // this hook to be inside a Suspense boundary.
+  return (
+    <Suspense fallback={null}>
+      <LoginForm />
+    </Suspense>
+  )
+}
+
+function LoginForm() {
   const router = useRouter()
+  const searchParams = useSearchParams()
+  const { data: session, status } = useSession()
   const [isLogin, setIsLogin] = useState(true)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
   const [form, setForm] = useState({ name: '', email: '', password: '' })
+
+  // On mount: if the URL contains any error param (e.g. leftover
+  // ?error=gmail_save_failed from a previous OAuth callback visit), strip
+  // it from the address bar so the user doesn't see a stale internal code.
+  // We deliberately do NOT read or display this param — we just clean it.
+  useEffect(() => {
+    if (searchParams.get('error') || searchParams.get('gmail')) {
+      router.replace(window.location.pathname)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  // If user is already logged in, bounce them to /dashboard.
+  // They should never see the login form when authenticated.
+  useEffect(() => {
+    if (status === 'authenticated' && session?.user) {
+      router.replace('/dashboard')
+    }
+  }, [status, session, router])
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -75,7 +107,9 @@ export default function LoginPage() {
         if (result?.error) {
           setError(toFriendlyError(result.error))
         } else if (result?.ok) {
-          router.push('/')
+          // IMPORTANT: redirect to /dashboard, NOT /.
+          // / is the public landing page; /dashboard is the authenticated app.
+          router.push('/dashboard')
           router.refresh()
         } else {
           setError('Something went wrong. Please try again.')
@@ -95,7 +129,8 @@ export default function LoginPage() {
           return
         }
 
-        // Auto sign in after registration
+        // Auto sign in after registration — establishes the NextAuth session
+        // cookie so subsequent /dashboard loads are authenticated.
         const result = await signIn('credentials', {
           email: form.email,
           password: form.password,
@@ -105,7 +140,7 @@ export default function LoginPage() {
         if (result?.error) {
           setError(toFriendlyError(result.error))
         } else if (result?.ok) {
-          router.push('/')
+          router.push('/dashboard')
           router.refresh()
         } else {
           setError('Something went wrong. Please try again.')

@@ -32,7 +32,9 @@ import {
   Menu,
   X,
 } from 'lucide-react'
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
+import { useSession } from 'next-auth/react'
+import { useRouter } from 'next/navigation'
 
 /* ------------------------------------------------------------------ */
 /*  Static content                                                     */
@@ -173,6 +175,16 @@ const pricing = [
 
 export default function LandingPage() {
   const [mobileNavOpen, setMobileNavOpen] = useState(false)
+  const { data: session, status } = useSession()
+  const router = useRouter()
+
+  // If user is already logged in, send them straight to /dashboard.
+  // No reason to show the marketing page to authenticated users.
+  useEffect(() => {
+    if (status === 'authenticated' && session?.user) {
+      router.replace('/dashboard')
+    }
+  }, [status, session, router])
 
   return (
     <div className="min-h-screen bg-white text-slate-900">

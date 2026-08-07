@@ -2,6 +2,7 @@
 
 import React, { useState } from 'react'
 import { usePathname, useRouter } from 'next/navigation'
+import { signOut } from 'next-auth/react'
 import { cn } from '@/lib/utils'
 import {
   LayoutDashboard,
@@ -133,16 +134,21 @@ export function AppLayout({ children }: AppLayoutProps) {
     router.push(page === 'dashboard' ? '/dashboard' : `/${page}`)
   }
 
-  // Logout: clear any session-y localStorage keys and return to landing page
-  const handleLogout = () => {
+  // Logout: properly destroy the NextAuth session (clears the session cookie)
+  // then redirect to /login. Just clearing localStorage was NOT enough — the
+  // session cookie stayed alive and the user was still authenticated on the
+  // next page load, which is why they kept landing on the dashboard after
+  // "logging out".
+  const handleLogout = async () => {
     try {
       // Preserve business data; only clear session flags if any exist.
-      // NotaryPro is local-first, so we do NOT wipe signings/clients/etc.
       localStorage.removeItem('notarypro-session')
     } catch {
       /* ignore */
     }
-    router.push('/')
+    // Destroy the NextAuth session cookie. callbackUrl tells NextAuth where
+    // to send the user after sign-out completes.
+    await signOut({ callbackUrl: '/login', redirect: true })
   }
 
   return (
