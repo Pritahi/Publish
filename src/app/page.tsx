@@ -150,6 +150,7 @@ const pricing = [
     cta: 'Start free',
     href: '/dashboard',
     highlighted: true,
+    comingSoon: false,
   },
   {
     name: 'Team',
@@ -166,6 +167,7 @@ const pricing = [
     cta: 'Set up team',
     href: '/dashboard',
     highlighted: false,
+    comingSoon: true,
   },
 ]
 
@@ -595,8 +597,8 @@ export default function LandingPage() {
             </h2>
             <p className="mt-4 text-slate-600 leading-relaxed">
               Every feature is available on the free plan for solo notaries.
-              Upgrade to Team only when you need cloud sync and multi-device
-              access.
+              The Team plan is coming soon for those who need cloud sync and
+              multi-device access.
             </p>
           </div>
 
@@ -605,14 +607,21 @@ export default function LandingPage() {
               <Card
                 key={p.name}
                 className={
-                  p.highlighted
-                    ? 'border-emerald-300 shadow-xl shadow-emerald-100 relative'
-                    : ''
+                  p.comingSoon
+                    ? 'border-slate-200 relative opacity-95'
+                    : p.highlighted
+                      ? 'border-emerald-300 shadow-xl shadow-emerald-100 relative'
+                      : ''
                 }
               >
-                {p.highlighted && (
+                {p.highlighted && !p.comingSoon && (
                   <div className="absolute -top-3 left-1/2 -translate-x-1/2">
                     <Badge className="bg-emerald-600 px-3 py-1">Most popular</Badge>
+                  </div>
+                )}
+                {p.comingSoon && (
+                  <div className="absolute -top-3 left-1/2 -translate-x-1/2">
+                    <Badge className="bg-slate-700 px-3 py-1">Coming soon</Badge>
                   </div>
                 )}
                 <CardContent className="pt-7">
@@ -624,26 +633,41 @@ export default function LandingPage() {
                   </div>
                   <ul className="space-y-3 mb-7">
                     {p.features.map((f) => (
-                      <li key={f} className="flex items-start gap-2 text-sm text-slate-700">
-                        <CheckCircle2 className="h-4 w-4 text-emerald-600 mt-0.5 shrink-0" />
+                      <li
+                        key={f}
+                        className={`flex items-start gap-2 text-sm ${p.comingSoon ? 'text-slate-500' : 'text-slate-700'}`}
+                      >
+                        <CheckCircle2
+                          className={`h-4 w-4 mt-0.5 shrink-0 ${p.comingSoon ? 'text-slate-400' : 'text-emerald-600'}`}
+                        />
                         <span>{f}</span>
                       </li>
                     ))}
                   </ul>
-                  <Button
-                    asChild
-                    className={
-                      p.highlighted
-                        ? 'w-full bg-emerald-600 hover:bg-emerald-700'
-                        : 'w-full'
-                    }
-                    variant={p.highlighted ? 'default' : 'outline'}
-                  >
-                    <Link href={p.href}>
-                      {p.cta}
-                      <ArrowRight className="h-3.5 w-3.5 ml-1.5" />
-                    </Link>
-                  </Button>
+                  {p.comingSoon ? (
+                    <Button
+                      disabled
+                      className="w-full bg-slate-100 text-slate-500 cursor-not-allowed"
+                      variant="outline"
+                    >
+                      Coming soon
+                    </Button>
+                  ) : (
+                    <Button
+                      asChild
+                      className={
+                        p.highlighted
+                          ? 'w-full bg-emerald-600 hover:bg-emerald-700'
+                          : 'w-full'
+                      }
+                      variant={p.highlighted ? 'default' : 'outline'}
+                    >
+                      <Link href={p.href}>
+                        {p.cta}
+                        <ArrowRight className="h-3.5 w-3.5 ml-1.5" />
+                      </Link>
+                    </Button>
+                  )}
                 </CardContent>
               </Card>
             ))}
@@ -669,7 +693,7 @@ export default function LandingPage() {
             {[
               {
                 q: 'Where is my data stored?',
-                a: 'By default, all data lives locally in your browser. You can export a JSON backup any time from Settings. On the Team plan, data syncs through your own Supabase project — still fully under your control.',
+                a: 'By default, all data lives locally in your browser. You can export a JSON backup any time from Settings. Cloud sync through Supabase will be available when the Team plan launches.',
               },
               {
                 q: 'Does the E-Journal satisfy state compliance?',
@@ -685,7 +709,7 @@ export default function LandingPage() {
               },
               {
                 q: 'Do I need a credit card to start?',
-                a: 'No. The Solo plan is free forever and includes every feature. Upgrade to Team only when you need multi-device sync or team collaboration.',
+                a: 'No. The Solo plan is free forever and includes every feature. The Team plan (multi-device sync + team collaboration) is coming soon.',
               },
             ].map((item, i) => (
               <Card key={i}>
