@@ -52,9 +52,16 @@ export async function POST(request: NextRequest) {
       .single()
 
     if (insertError) {
-      console.error('Supabase user insert error:', insertError)
+      // Log full Supabase error server-side for debugging — never send it
+      // to the client. Even the message can leak schema details.
+      console.error('[register] Supabase insert failed:', {
+        message: insertError.message,
+        code: insertError.code,
+        details: insertError.details,
+        hint: insertError.hint,
+      })
       return NextResponse.json(
-        { error: 'Failed to create account' },
+        { error: 'Something went wrong while creating your account. Please try again.' },
         { status: 500 }
       )
     }
@@ -67,14 +74,26 @@ export async function POST(request: NextRequest) {
     )
   } catch (error) {
     if (error instanceof z.ZodError) {
+      // Don't expose Zod's internal `issues` array to the client — it
+      // contains field paths, codes, and the schema shape. Pick the
+      // first user-facing message only, and even then re-wrap it so we
+      // control the exact wording.
+      const firstIssue = error.issues?.[0]
+      const friendly =
+        firstIssue?.message && firstIssue.message.length < 120
+          ? firstIssue.message
+          : 'Please check your input and try again.'
+      console.warn('[register] validation failed:', {
+        issues: error.issues.map((i) => ({ path: i.path, code: i.code })),
+      })
       return NextResponse.json(
-        { error: 'Validation failed', details: error.issues },
+        { error: friendly },
         { status: 400 }
       )
     }
-    console.error('Registration error:', error)
+    console.error('[register] unexpected error:', error)
     return NextResponse.json(
-      { error: 'Failed to create account' },
+      { error: 'Something went wrong while creating your account. Please try again.' },
       { status: 500 }
     )
   }

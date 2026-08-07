@@ -9,6 +9,49 @@ import { Label } from '@/components/ui/label'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Stamp, Loader2, AlertCircle } from 'lucide-react'
 
+/**
+ * Map any internal/technical error string coming from the API or NextAuth
+ * to a single, user-friendly message. We NEVER show the raw string — even
+ * if it looks friendly — because internal codes (e.g. `gmail_save_failed`,
+ * `PGRST116`, `CredentialsSignin`) can leak through and confuse users.
+ *
+ * If we don't recognize the error, we fall back to a generic safe message.
+ * The real error remains in the server logs for debugging.
+ */
+function toFriendlyError(raw: string | undefined | null): string {
+  if (!raw) return 'Something went wrong. Please try again.'
+
+  const code = raw.toLowerCase()
+
+  // Auth-related
+  if (code.includes('invalid credentials') || code.includes('credentialssignin')) {
+    return 'Invalid email or password. Please try again.'
+  }
+  if (code.includes('email and password are required')) {
+    return 'Please enter both your email and password.'
+  }
+  if (code.includes('already exists') || code.includes('duplicate')) {
+    return 'An account with this email already exists. Try signing in instead.'
+  }
+
+  // Validation
+  if (code.includes('validation') || code.includes('invalid email')) {
+    return 'Please check your email and password and try again.'
+  }
+  if (code.includes('password')) {
+    return 'Password must be at least 6 characters.'
+  }
+
+  // Gmail-related (defensive — these should never reach here anymore,
+  // but if they do, we strip the internal code).
+  if (code.startsWith('gmail_')) {
+    return 'We could not connect your Gmail. You can try again later from Settings.'
+  }
+
+  // Generic fallback for anything else (DB errors, network, etc.)
+  return 'Something went wrong. Please try again.'
+}
+
 export default function LoginPage() {
   const router = useRouter()
   const [isLogin, setIsLogin] = useState(true)
@@ -30,10 +73,12 @@ export default function LoginPage() {
         })
 
         if (result?.error) {
-          setError(result.error)
-        } else {
+          setError(toFriendlyError(result.error))
+        } else if (result?.ok) {
           router.push('/')
           router.refresh()
+        } else {
+          setError('Something went wrong. Please try again.')
         }
       } else {
         // Register
@@ -43,10 +88,10 @@ export default function LoginPage() {
           body: JSON.stringify(form),
         })
 
-        const data = await res.json()
+        const data = await res.json().catch(() => ({}))
 
         if (!res.ok) {
-          setError(data.error || 'Registration failed')
+          setError(toFriendlyError(data?.error))
           return
         }
 
@@ -58,14 +103,16 @@ export default function LoginPage() {
         })
 
         if (result?.error) {
-          setError(result.error)
-        } else {
+          setError(toFriendlyError(result.error))
+        } else if (result?.ok) {
           router.push('/')
           router.refresh()
+        } else {
+          setError('Something went wrong. Please try again.')
         }
       }
     } catch {
-      setError('An unexpected error occurred')
+      setError('Something went wrong. Please try again.')
     } finally {
       setLoading(false)
     }

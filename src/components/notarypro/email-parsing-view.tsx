@@ -1,6 +1,7 @@
 'use client'
 
 import React, { useState, useEffect } from 'react'
+import { useSearchParams, useRouter } from 'next/navigation'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -67,10 +68,37 @@ export default function EmailParsingView() {
   const [confirming, setConfirming] = useState<string | null>(null)
   const [filter, setFilter] = useState<string>('all')
   const [testOpen, setTestOpen] = useState(false)
+  const searchParams = useSearchParams()
+  const router = useRouter()
 
   useEffect(() => {
     loadData()
   }, [])
+
+  // Show a friendly toast based on the ?gmail= URL flag set by the OAuth
+  // callback. We then strip the param from the URL so a refresh doesn't
+  // re-show the toast. No internal error codes are ever read here.
+  useEffect(() => {
+    const gmailStatus = searchParams.get('gmail')
+    if (!gmailStatus) return
+
+    if (gmailStatus === 'connected') {
+      toast.success('Gmail connected successfully', {
+        description: 'Your signing emails will now be auto-parsed.',
+      })
+    } else if (gmailStatus === 'failed') {
+      toast.error("We couldn't connect your Gmail", {
+        description:
+          'Something went wrong on our end. You can try again from the Email Parsing page later.',
+      })
+    }
+
+    // Clean the URL so refresh / back-button doesn't repeat the toast.
+    const cleanUrl = new URL(window.location.href)
+    cleanUrl.searchParams.delete('gmail')
+    router.replace(cleanUrl.pathname + cleanUrl.search)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchParams])
 
   async function loadData() {
     setLoading(true)
