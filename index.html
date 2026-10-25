@@ -1,0 +1,566 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="theme-color" content="#1a1a2e">
+    <title>SleepGuard - Bed Phone Tracker</title>
+    <meta name="description" content="Track phone usage in bed with NFC tag commitment">
+    <link rel="manifest" href="manifest.json">
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+            color: #ffffff;
+            min-height: 100vh;
+            padding: 20px;
+        }
+        
+        .container {
+            max-width: 500px;
+            margin: 0 auto;
+        }
+        
+        .card {
+            background: rgba(255, 255, 255, 0.05);
+            backdrop-filter: blur(10px);
+            border-radius: 24px;
+            padding: 30px;
+            margin-bottom: 20px;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+        
+        h1 {
+            font-size: 28px;
+            margin-bottom: 10px;
+            background: linear-gradient(135deg, #4cc9f0 0%, #e94560 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+        
+        .subtitle {
+            font-size: 16px;
+            color: #a8a8a8;
+            margin-bottom: 30px;
+        }
+        
+        .status-badge {
+            display: inline-block;
+            padding: 8px 16px;
+            border-radius: 20px;
+            font-size: 14px;
+            font-weight: 600;
+            margin-bottom: 20px;
+        }
+        
+        .status-idle { background: rgba(76, 201, 240, 0.15); color: #4cc9f0; border: 1px solid rgba(76, 201, 240, 0.3); }
+        .status-active { background: rgba(233, 69, 96, 0.15); color: #e94560; border: 1px solid rgba(233, 69, 96, 0.3); }
+        .status-warning { background: rgba(255, 183, 77, 0.15); color: #ffb74d; border: 1px solid rgba(255, 183, 77, 0.3); }
+        
+        .streak-display {
+            text-align: center;
+            margin: 30px 0;
+        }
+        
+        .streak-number {
+            font-size: 64px;
+            font-weight: 800;
+            color: #4cc9f0;
+            margin: 0;
+        }
+        
+        .streak-label {
+            color: #a8a8a8;
+            font-size: 14px;
+            margin-top: 8px;
+        }
+        
+        .session-stats {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 15px;
+            margin: 30px 0;
+        }
+        
+        .stat-box {
+            background: rgba(255, 255, 255, 0.05);
+            padding: 20px;
+            border-radius: 16px;
+            text-align: center;
+        }
+        
+        .stat-value {
+            font-size: 32px;
+            font-weight: 700;
+            color: #ffffff;
+        }
+        
+        .stat-label {
+            font-size: 12px;
+            color: #a8a8a8;
+            margin-top: 5px;
+        }
+        
+        .btn {
+            width: 100%;
+            padding: 18px;
+            border: none;
+            border-radius: 16px;
+            font-size: 18px;
+            font-weight: 600;
+            cursor: pointer;
+            margin: 10px 0;
+            transition: all 0.2s;
+        }
+        
+        .btn:active { transform: scale(0.95); }
+        
+        .btn-start {
+            background: linear-gradient(135deg, #4cc9f0 0%, #2a9d8f 100%);
+            color: white;
+        }
+        
+        .btn-start:disabled {
+            background: #444;
+            color: #888;
+            cursor: not-allowed;
+        }
+        
+        .btn-end {
+            background: linear-gradient(135deg, #e94560 0%, #c0392b 100%);
+            color: white;
+        }
+        
+        .btn-reset {
+            background: transparent;
+            color: #a8a8a8;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+        
+        .warning-msg {
+            background: rgba(255, 183, 77, 0.1);
+            border: 1px solid rgba(255, 183, 77, 0.3);
+            color: #ffb74d;
+            padding: 15px;
+            border-radius: 12px;
+            margin: 20px 0;
+            display: none;
+        }
+        
+        .timer {
+            font-size: 48px;
+            font-weight: 700;
+            color: #ffffff;
+            text-align: center;
+            margin: 20px 0;
+            font-variant-numeric: tabular-nums;
+        }
+        
+        .nfc-info {
+            font-size: 13px;
+            color: #888;
+            margin-top: 20px;
+            padding-top: 20px;
+            border-top: 1px solid rgba(255, 255, 255, 0.05);
+        }
+        
+        .usage-history {
+            margin-top: 30px;
+        }
+        
+        .history-item {
+            background: rgba(255, 255, 255, 0.05);
+            padding: 15px;
+            border-radius: 12px;
+            margin-bottom: 10px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        
+        .history-date { color: #888; font-size: 13px; }
+        .history-usage { font-weight: 600; color: #4cc9f0; }
+        
+        @keyframes pulse {
+            0% { opacity: 1; }
+            50% { opacity: 0.5; }
+            100% { opacity: 1; }
+        }
+        
+        .pulse { animation: pulse 2s infinite; }
+        
+        .hidden { display: none !important; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        
+        <!-- Idle State -->
+        <div id="idleState" class="card">
+            <h1>🌙 SleepGuard</h1>
+            <p class="subtitle">Track phone usage in bed. Commit with NFC tag.</p>
+            
+            <div class="status-badge status-idle" id="statusBadge">Ready for Sleep</div>
+            
+            <div class="streak-display">
+                <div class="streak-number" id="streakNumber">0</div>
+                <div class="streak-label">Night Streak</div>
+            </div>
+            
+            <button id="startBtn" class="btn btn-start">
+                📱 Tap NFC Tag to Start
+            </button>
+            
+            <div class="nfc-info">
+                💡 Place NFC tag on your bedside table or charging point.<br>
+                Tap your phone to tag → Sleep session starts → Phone usage tracked.
+            </div>
+        </div>
+        
+        <!-- Active Session State -->
+        <div id="activeState" class="card hidden">
+            <h1>😴 Sleeping</h1>
+            <p class="subtitle">Phone usage is being tracked</p>
+            
+            <div class="status-badge status-active" id="statusBadgeActive">Session Active</div>
+            
+            <div class="timer" id="timer">00:00:00</div>
+            
+            <div class="session-stats">
+                <div class="stat-box">
+                    <div class="stat-value" id="usageMinutes">0</div>
+                    <div class="stat-label">Minutes Used</div>
+                </div>
+                <div class="stat-box">
+                    <div class="stat-value" id="limitText">30</div>
+                    <div class="stat-label">Limit (mins)</div>
+                </div>
+            </div>
+            
+            <div class="warning-msg" id="warningMsg">
+                ⚠️ You've used your phone for <span id="warningTime"></span> minutes!<br>
+                Put it down and go to sleep!
+            </div>
+            
+            <button id="endBtn" class="btn btn-end">
+                🌅 End Sleep Session
+            </button>
+            
+            <div class="nfc-info">
+                If you use phone more than 30 mins, streak will break.
+            </div>
+        </div>
+        
+        <!-- Session Summary State -->
+        <div id="summaryState" class="card hidden">
+            <h1>✅ Session Complete</h1>
+            <p class="subtitle">Here's your sleep report</p>
+            
+            <div class="status-badge status-idle">Completed</div>
+            
+            <div class="session-stats">
+                <div class="stat-box">
+                    <div class="stat-value" id="summaryUsage">0</div>
+                    <div class="stat-label">Phone Minutes</div>
+                </div>
+                <div class="stat-box">
+                    <div class="stat-value" id="summaryStreak">0</div>
+                    <div class="stat-label">Current Streak</div>
+                </div>
+            </div>
+            
+            <div id="summaryMessage" style="margin: 20px 0; font-size: 16px;"></div>
+            
+            <button id="newSessionBtn" class="btn btn-start">
+                Start New Session
+            </button>
+            
+            <button class="btn btn-reset" onclick="resetAll()">
+                Reset All Data
+            </button>
+            
+            <div class="usage-history" id="historySection">
+                <h3 style="margin-bottom: 15px; color: #a8a8a8;">Recent Sessions</h3>
+                <div id="historyList"></div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Configuration
+        const USAGE_LIMIT = 30; // minutes
+        const STORAGE_KEY = 'sleepguard_data';
+        
+        // State
+        let state = {
+            streak: 0,
+            sessions: [],
+            currentSession: null,
+            isNFCSupported: false
+        };
+        
+        // DOM Elements
+        const idleState = document.getElementById('idleState');
+        const activeState = document.getElementById('activeState');
+        const summaryState = document.getElementById('summaryState');
+        
+        const startBtn = document.getElementById('startBtn');
+        const endBtn = document.getElementById('endBtn');
+        const newSessionBtn = document.getElementById('newSessionBtn');
+        
+        const streakNumber = document.getElementById('streakNumber');
+        const statusBadge = document.getElementById('statusBadge');
+        const statusBadgeActive = document.getElementById('statusBadgeActive');
+        
+        const timerEl = document.getElementById('timer');
+        const usageMinutesEl = document.getElementById('usageMinutes');
+        const warningMsg = document.getElementById('warningMsg');
+        const warningTime = document.getElementById('warningTime');
+        
+        const summaryUsage = document.getElementById('summaryUsage');
+        const summaryStreak = document.getElementById('summaryStreak');
+        const summaryMessage = document.getElementById('summaryMessage');
+        const historyList = document.getElementById('historyList');
+        
+        // Timer
+        let timerInterval = null;
+        let sessionStartTime = null;
+        let usageSeconds = 0;
+        let lastActivityTime = null;
+        
+        // Initialize
+        function init() {
+            loadData();
+            updateUI();
+            checkNFCSupport();
+            
+            startBtn.addEventListener('click', startSession);
+            endBtn.addEventListener('click', endSession);
+            newSessionBtn.addEventListener('click', () => {
+                summaryState.classList.add('hidden');
+                idleState.classList.remove('hidden');
+                updateUI();
+            });
+            
+            // Track visibility changes (when user switches tabs/apps)
+            document.addEventListener('visibilitychange', handleVisibilityChange);
+            
+            // Track page unload
+            window.addEventListener('beforeunload', handleBeforeUnload);
+        }
+        
+        function loadData() {
+            const stored = localStorage.getItem(STORAGE_KEY);
+            if (stored) {
+                state = JSON.parse(stored);
+            }
+        }
+        
+        function saveData() {
+            localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+        }
+        
+        function checkNFCSupport() {
+            state.isNFCSupported = 'NDEFReader' in window;
+            if (!state.isNFCSupported) {
+                startBtn.textContent = 'Start Sleep Session (Manual)';
+                startBtn.style.background = 'linear-gradient(135deg, #a8a8a8 0%, #888 100%)';
+                startBtn.onclick = startSession;
+            } else {
+                startNFCReader();
+            }
+        }
+        
+        async function startNFCReader() {
+            try {
+                const ndef = new NDEFReader();
+                await ndef.scan();
+                
+                ndef.onreading = (event) => {
+                    const tagId = event.serialNumber ? 
+                        Array.from(event.serialNumber).map(b => b.toString(16).padStart(2, '0')).join('') : 
+                        'nfc-tag';
+                    console.log('NFC Tag detected:', tagId);
+                    startSession();
+                };
+                
+                startBtn.textContent = '📱 Tap NFC Tag to Start';
+                startBtn.onclick = null;
+                startBtn.addEventListener('click', startSession);
+            } catch (err) {
+                console.log('NFC not available:', err);
+                startBtn.textContent = 'Start Sleep Session (Manual)';
+                startBtn.addEventListener('click', startSession);
+            }
+        }
+        
+        function startSession() {
+            if (state.currentSession) return;
+            
+            sessionStartTime = Date.now();
+            usageSeconds = 0;
+            lastActivityTime = sessionStartTime;
+            
+            state.currentSession = {
+                startTime: sessionStartTime,
+                endTime: null,
+                usageSeconds: 0,
+                streakBroken: false
+            };
+            
+            saveData();
+            
+            idleState.classList.add('hidden');
+            activeState.classList.remove('hidden');
+            summaryState.classList.add('hidden');
+            
+            statusBadgeActive.className = 'status-badge status-active';
+            statusBadgeActive.textContent = 'Session Active';
+            
+            startTimer();
+        }
+        
+        function startTimer() {
+            timerInterval = setInterval(() => {
+                const now = Date.now();
+                const elapsed = Math.floor((now - sessionStartTime) / 1000);
+                
+                // Track usage only if page is visible (user is actively using phone)
+                if (!document.hidden) {
+                    usageSeconds += 1;
+                    state.currentSession.usageSeconds = usageSeconds;
+                    lastActivityTime = now;
+                }
+                
+                // Update timer display
+                const h = Math.floor(elapsed / 3600).toString().padStart(2, '0');
+                const m = Math.floor((elapsed % 3600) / 60).toString().padStart(2, '0');
+                const s = (elapsed % 60).toString().padStart(2, '0');
+                timerEl.textContent = `${h}:${m}:${s}`;
+                
+                // Update usage minutes
+                const usageMins = Math.floor(usageSeconds / 60);
+                usageMinutesEl.textContent = usageMins;
+                
+                // Warning at limit
+                if (usageMins >= USAGE_LIMIT && !state.currentSession.streakBroken) {
+                    showWarning(true);
+                    warningTime.textContent = usageMins;
+                }
+                
+                saveData();
+            }, 1000);
+        }
+        
+        function showWarning(show) {
+            warningMsg.style.display = show ? 'block' : 'none';
+        }
+        
+        function handleVisibilityChange() {
+            if (document.hidden && state.currentSession) {
+                // User switched away - stop counting usage
+                lastActivityTime = null;
+            } else if (!document.hidden && state.currentSession) {
+                // User came back - resume counting
+                lastActivityTime = Date.now();
+            }
+        }
+        
+        function handleBeforeUnload() {
+            if (state.currentSession && !state.currentSession.endTime) {
+                // Session was interrupted, save what we have
+                state.currentSession.endTime = Date.now();
+                state.sessions.push(state.currentSession);
+                state.currentSession = null;
+                saveData();
+            }
+        }
+        
+        function endSession() {
+            if (!state.currentSession) return;
+            
+            clearInterval(timerInterval);
+            
+            const now = Date.now();
+            state.currentSession.endTime = now;
+            state.currentSession.usageSeconds = usageSeconds;
+            
+            const usageMinutes = Math.floor(usageSeconds / 60);
+            
+            // Determine if streak continues
+            if (usageMinutes <= USAGE_LIMIT) {
+                state.streak += 1;
+                state.currentSession.streakBroken = false;
+                summaryMessage.innerHTML = `Great job! You used your phone for <strong>${usageMinutes} minutes</strong>. Streak continued! 🎉`;
+                summaryMessage.style.color = '#4cc9f0';
+            } else {
+                state.streak = 0;
+                state.currentSession.streakBroken = true;
+                summaryMessage.innerHTML = `Oh no! You used your phone for <strong>${usageMinutes} minutes</strong>. Streak broken! 😴`;
+                summaryMessage.style.color = '#ffb74d';
+            }
+            
+            state.sessions.push(state.currentSession);
+            state.currentSession = null;
+            
+            saveData();
+            
+            // Update UI
+            activeState.classList.add('hidden');
+            summaryState.classList.remove('hidden');
+            
+            summaryUsage.textContent = usageMinutes;
+            summaryStreak.textContent = state.streak;
+            streakNumber.textContent = state.streak;
+            
+            showWarning(false);
+            
+            renderHistory();
+        }
+        
+        function renderHistory() {
+            historyList.innerHTML = '';
+            const recent = state.sessions.slice(-5).reverse();
+            
+            recent.forEach(session => {
+                const date = new Date(session.startTime);
+                const usageMins = Math.floor(session.usageSeconds / 60);
+                const broke = session.streakBroken ? ' (streak broken)' : '';
+                
+                const item = document.createElement('div');
+                item.className = 'history-item';
+                item.innerHTML = `
+                    <span>
+                        ${date.toLocaleDateString()} ${date.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}
+                        ${broke}
+                    </span>
+                    <span class="history-usage">${usageMins} min</span>
+                `;
+                historyList.appendChild(item);
+            });
+        }
+        
+        function updateUI() {
+            streakNumber.textContent = state.streak;
+            renderHistory();
+        }
+        
+        function resetAll() {
+            if (confirm('Reset all data? This cannot be undone.')) {
+                state.streak = 0;
+                state.sessions = [];
+                state.currentSession = null;
+                saveData();
+                updateUI();
+                summaryState.classList.add('hidden');
+                idleState.classList.remove('hidden');
+            }
+        }
+        
+        // Start
+        init();
+    </script>
+</body>
+</html>
